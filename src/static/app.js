@@ -32,6 +32,8 @@
     engineDown: $('engineDown'),
     engineDownDesc: $('engineDownDesc'),
     retryBtn: $('retryBtn'),
+    previewBtn: $('previewBtn'),
+    previewAudio: $('previewAudio'),
     langBtns: [...document.querySelectorAll('.lang-btn')],
     textInput: $('textInput'),
     charCount: $('charCount'),
@@ -55,6 +57,17 @@
     historyList: $('historyList'),
     historyEmpty: $('historyEmpty'),
     footEngine: $('footEngine'),
+    savePresetBtn: $('savePresetBtn'),
+    presetList: $('presetList'),
+    presetEmpty: $('presetEmpty'),
+    batchToggleBtn: $('batchToggleBtn'),
+    batchPanel: $('batchPanel'),
+    batchInput: $('batchInput'),
+    batchCount: $('batchCount'),
+    batchDefaultTone: $('batchDefaultTone'),
+    batchStartBtn: $('batchStartBtn'),
+    batchStopBtn: $('batchStopBtn'),
+    batchResults: $('batchResults'),
   };
 
   // ---------- 工具 ----------
@@ -88,6 +101,8 @@
       if (btn) btn.addEventListener('click', boot);
     }
     els.synthBtn.disabled = !up;
+    els.batchToggleBtn.disabled = !up;
+    els.previewBtn.disabled = !up;
   }
 
   // ---------- 启动流程：体检 -> 音色 -> 历史 ----------
@@ -271,6 +286,230 @@
     }
   }
 
+  // ---------- 预设（浏览器本地存储） ----------
+  const PRESET_KEY = 'abv:presets';
+
+  function getPresets() {
+    try {
+      const raw = localStorage.getItem(PRESET_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function savePresets(list) {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(list));
+  }
+
+  function renderPresets() {
+    const list = getPresets();
+    els.presetList.innerHTML = '';
+    els.presetEmpty.hidden = list.length > 0;
+    els.presetList.classList.toggle('hidden', list.length === 0);
+    for (let i = 0; i < list.length; i++) {
+      els.presetList.appendChild(buildPresetItem(list[i], i));
+    }
+  }
+
+  function buildPresetItem(p, index) {
+    const row = document.createElement('div');
+    row.className = 'preset-item';
+
+    const name = document.createElement('span');
+    name.className = 'preset-name';
+    name.textContent = p.name || ('预设 ' + (index + 1));
+
+    const meta = document.createElement('div');
+    meta.className = 'preset-meta';
+    const voiceName = state.voices.find((v) => (v.path || v.name) === p.voice);
+    const voiceTag = document.createElement('span');
+    voiceTag.className = 'history-tag';
+    voiceTag.textContent = voiceName ? voiceName.name : '音色已失效';
+    const langTag = document.createElement('span');
+    langTag.className = 'history-tag';
+    langTag.textContent = (p.lang || '?').toUpperCase();
+    const toneTag = document.createElement('span');
+    toneTag.className = 'history-tag';
+    toneTag.textContent = p.tone || '自动';
+    meta.append(voiceTag, langTag, toneTag);
+
+    const actions = document.createElement('div');
+    actions.className = 'preset-actions';
+    const apply = document.createElement('button');
+    apply.type = 'button';
+    apply.className = 'preset-apply';
+    apply.textContent = '▶ 应用';
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'preset-delete';
+    del.textContent = '删除';
+
+    apply.addEventListener('click', () => applyPreset(p));
+    del.addEventListener('click', () => {
+      const list = getPresets();
+      list.splice(index, 1);
+      savePresets(list);
+      renderPresets();
+    });
+
+    actions.append(apply, del);
+    row.append(name, meta, actions);
+    return row;
+  }
+
+  function applyPreset(p) {
+    // 音色仍存在才设置
+    if (p.voice && state.voices.some((v) => (v.path || v.name) === p.voice)) {
+      els.voiceSelect.value = p.voice;
+    }
+    if (p.lang && ['zh', 'en', 'ja'].includes(p.lang)) setLang(p.lang);
+    if (p.tone) setTone(p.tone);
+    els.textInput.focus();
+  }
+
+  function saveCurrentPreset() {
+    const list = getPresets();
+    let name = '';
+    try {
+      name = (window.prompt('给这个预设起个名字（留空用时间命名）：', '预设 ' + (list.length + 1)) || '').trim();
+    } catch (e) { name = ''; }
+    if (!name) name = '预设 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const preset = {
+      name,
+      voice: els.voiceSelect.value || '',
+      lang: state.lang,
+      tone: state.tone,
+      savedAt: new Date().toISOString(),
+    };
+    list.push(preset);
+    savePresets(list);
+    renderPresets();
+  }
+
+  // ---------- 试听所选音色 ----------
+  async function previewVoice() {
+    const voice = els.voiceSelect.value;
+    if (!voice) {
+      showError('还没选音色', '先在音色下拉框里选一个，再点试听。');
+      return;
+    }
+    hideError();
+    try {
+      const url = '/api/preview?voice=' + encodeURIComponent(voice);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const audio = new Audio(objUrl);
+      audio.onended = () => URL.revokeObjectURL(objUrl);
+      await audio.play();
+    } catch (e) {
+      // 后端还没实现 /api/preview，给出人话提示，请 lead 补接口
+      showError(
+        '试听接口还没开通',
+        '前端已经按 GET /api/preview?voice=xxx 的方式请求了，但后端还没有这个接口（返回：' +
+        String(e.message || e) + '）。请联系后端同事补上：用声音引擎把该音色的参考音频转成音频流返回。'
+      );
+    }
+  }
+
+  // ---------- 批量合成 ----------
+  const ALLOWED_TONES = ['auto', '平静', '开心', '悲伤', '生气', '惊讶', '害怕'];
+  let batchRunning = false;
+
+  function parseBatchLines() {
+    const lines = els.batchInput.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    return lines.map((line) => {
+      // 支持「语气｜台词」或「语气|台词」的行首指定
+      const m = line.match(/^([^｜|]{1,4})[｜|](.*)$/);
+      if (m && ALLOWED_TONES.includes(m[1])) {
+        return { tone: m[1], text: m[2].trim() };
+      }
+      return { tone: els.batchDefaultTone.value, text: line };
+    }).filter((x) => x.text);
+  }
+
+  function updateBatchCount() {
+    const n = parseBatchLines().length;
+    els.batchCount.textContent = '共 ' + n + ' 句';
+  }
+
+  function buildBatchItem(index, item) {
+    const row = document.createElement('div');
+    row.className = 'batch-item';
+
+    const idx = document.createElement('span');
+    idx.className = 'batch-idx';
+    idx.textContent = (index + 1) + '.';
+
+    const text = document.createElement('span');
+    text.className = 'batch-text';
+    text.textContent = item.text;
+
+    const status = document.createElement('span');
+    status.className = 'batch-status';
+    status.textContent = '排队中…';
+
+    row.append(idx, text, status);
+    return { row, status };
+  }
+
+  async function startBatch() {
+    const items = parseBatchLines();
+    if (items.length === 0) {
+      showError('没有可合成的句子', '在批量文本框里每行写一句台词。');
+      return;
+    }
+    const voice = els.voiceSelect.value;
+    if (!voice) {
+      showError('还没选音色', '先选音色，再开始批量合成。');
+      return;
+    }
+
+    hideError();
+    batchRunning = true;
+    els.batchStartBtn.disabled = true;
+    els.batchStopBtn.classList.remove('hidden');
+    els.batchResults.classList.remove('hidden');
+    els.batchResults.innerHTML = '';
+
+    for (let i = 0; i < items.length; i++) {
+      if (!batchRunning) break;
+      const item = items[i];
+      const { row, status } = buildBatchItem(i, item);
+      els.batchResults.appendChild(row);
+      status.textContent = '合成中…';
+      try {
+        const res = await api('/api/synthesize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: item.text, lang: state.lang, voice, tone: item.tone }),
+        });
+        if (res && res.ok && res.audio_url) {
+          status.textContent = '✅';
+          status.className = 'batch-status done';
+          const audio = document.createElement('audio');
+          audio.controls = true;
+          audio.preload = 'metadata';
+          audio.src = res.audio_url;
+          row.appendChild(audio);
+        } else {
+          throw new Error(res && res.message ? res.message : '没有返回音频');
+        }
+      } catch (e) {
+        status.textContent = '❌ 失败：' + String(e.message || e).slice(0, 60);
+        status.className = 'batch-status fail';
+      }
+    }
+
+    batchRunning = false;
+    els.batchStartBtn.disabled = !state.engineUp;
+    els.batchStopBtn.classList.add('hidden');
+    loadHistory();
+  }
+
   // ---------- 历史 ----------
   function renderHistory(list) {
     els.historyEmpty.hidden = list.length > 0;
@@ -398,6 +637,20 @@
   els.synthBtn.addEventListener('click', synthesize);
   els.retrySynthBtn.addEventListener('click', synthesize);
   els.retryBtn.addEventListener('click', boot);
+  els.previewBtn.addEventListener('click', previewVoice);
+  els.savePresetBtn.addEventListener('click', saveCurrentPreset);
+
+  els.batchToggleBtn.addEventListener('click', () => {
+    els.batchPanel.classList.toggle('hidden');
+    if (!els.batchPanel.classList.contains('hidden')) {
+      updateBatchCount();
+      els.batchInput.focus();
+    }
+  });
+
+  els.batchInput.addEventListener('input', updateBatchCount);
+  els.batchStartBtn.addEventListener('click', startBatch);
+  els.batchStopBtn.addEventListener('click', () => { batchRunning = false; });
 
   els.voiceSelect.addEventListener('change', () => {
     if (els.voiceSelect.value) {
@@ -443,5 +696,6 @@
 
   // ---------- 启动 ----------
   updateMeta();
+  renderPresets();
   boot();
 })();

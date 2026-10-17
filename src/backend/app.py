@@ -25,7 +25,7 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -99,6 +99,18 @@ def find_ref_file(voice: str, tone: str) -> str:
     raise HTTPException(status_code=404, detail=f"找不到参考音频：{voice}（应放在 data/ref/ 下）")
 
 
+def ref_prompt_text(voice: str) -> str:
+    """参考音频对应的文本。有的话传给引擎 —— 训练后的模型带上参考文本合成更稳。"""
+    try:
+        f = REF_DIR / "ref_texts.json"
+        if f.exists():
+            mapping = json.loads(f.read_text(encoding="utf-8"))
+            return mapping.get(Path(voice).stem, "")
+    except Exception:
+        pass
+    return ""
+
+
 def merge_wavs(wav_bytes_list: list) -> bytes:
     """把多段 wav 拼成一段。要求采样率/声道/位深一致（v2 引擎固定 32k/单声道/16bit）。"""
     if len(wav_bytes_list) == 1:
@@ -138,6 +150,18 @@ def voices():
             for r in refs
         ]
     }
+
+
+@app.get("/api/preview")
+def preview(voice: str):
+    """试听参考音频：voice 是文件名（如 setsuna_03）或完整路径，返回 wav 流。"""
+    try:
+        ref_path = find_ref_file(voice, "")
+    except HTTPException:
+        raise HTTPException(status_code=404, detail=f"找不到参考音频：{voice}")
+    if not Path(ref_path).exists():
+        raise HTTPException(status_code=404, detail="参考音频不存在")
+    return FileResponse(ref_path, media_type="audio/wav")
 
 
 @app.post("/api/synthesize")
@@ -188,6 +212,7 @@ def synthesize_text(req: SynthesizeRequest):
                 text_lang=lang,
                 ref_audio_path=ref_path,
                 prompt_lang=lang,
+                prompt_text=ref_prompt_text(ref_path),
                 speed_factor=req.speed,
             )
         except EngineError as e:

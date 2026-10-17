@@ -23,9 +23,21 @@
         <option value="">加载中…</option>
       </select>
     </label>
+    <button type="button" id="previewBtn" class="btn-secondary btn-sm" disabled title="试听所选音色的参考音频">▶ 试听</button>
     <span id="engineBadge" class="badge badge-warn" title="声音引擎连接状态">引擎检查中…</span>
   </div>
 </header>
+
+<!-- ===== 流程导航（设计原则 1：主流程永远可见）===== -->
+<nav class="flowbar" aria-label="工作流程">
+  <div class="flow-step future"><span class="flow-dot">○</span>素材</div>
+  <div class="flow-step future"><span class="flow-dot">○</span>质检</div>
+  <div class="flow-step future"><span class="flow-dot">○</span>标注</div>
+  <div class="flow-step future"><span class="flow-dot">○</span>训练</div>
+  <div class="flow-step future"><span class="flow-dot">○</span>评测</div>
+  <div class="flow-step current"><span class="flow-dot">●</span>合成</div>
+</nav>
+<div class="flowbar-note">素材 → 质检 → 标注 → 训练 → 评测 → 合成　·　当前版本只开放「合成」，其余功能即将上线</div>
 
 <main class="workspace">
 
@@ -88,12 +100,50 @@
     </div>
   </section>
 
+  <!-- ===== 预设（存在浏览器本地）===== -->
+  <section class="card">
+    <div class="field-label">预设</div>
+    <div id="presetArea" class="preset-area">
+      <div class="preset-empty" id="presetEmpty">还没有预设。合成出满意的结果后，点「💾 存成预设」。</div>
+      <div id="presetList" class="preset-list hidden"></div>
+    </div>
+  </section>
+
   <!-- ===== 合成按钮 ===== -->
   <section class="actions">
     <button type="button" id="synthBtn" class="btn-primary" disabled>
       <span class="btn-label">🔊 合成</span>
       <span class="btn-hint">Ctrl+Enter</span>
     </button>
+    <button type="button" id="batchToggleBtn" class="btn-secondary" disabled>
+      📚 批量合成
+    </button>
+  </section>
+
+  <!-- ===== 批量合成面板（默认收起）===== -->
+  <section id="batchPanel" class="card hidden">
+    <div class="field-label" for="batchInput">批量合成</div>
+    <div class="batch-note">每行一句，逐句合成。行首可写「语气｜台词」指定这一句的语气，不写就用下面的默认语气。</div>
+    <textarea id="batchInput" class="text-input batch-input" rows="6"
+      placeholder="第一句台词&#10;第二句台词&#10;开心｜第三句台词"></textarea>
+    <div class="batch-controls">
+      <span id="batchCount" class="meta-hint">共 0 句</span>
+      <div class="batch-controls-right">
+        <span class="meta-hint">默认语气：</span>
+        <select id="batchDefaultTone" class="mini-select">
+          <option value="auto" selected>自动</option>
+          <option value="平静">平静</option>
+          <option value="开心">开心</option>
+          <option value="悲伤">悲伤</option>
+          <option value="生气">生气</option>
+          <option value="惊讶">惊讶</option>
+          <option value="害怕">害怕</option>
+        </select>
+        <button type="button" id="batchStartBtn" class="btn-secondary">▶ 开始逐句合成</button>
+        <button type="button" id="batchStopBtn" class="btn-secondary hidden">⏹ 停止</button>
+      </div>
+    </div>
+    <div id="batchResults" class="batch-results hidden"></div>
   </section>
 
   <!-- ===== 合成中状态 ===== -->
@@ -112,6 +162,7 @@
       <audio id="resultAudio" controls preload="metadata"></audio>
       <div class="result-actions">
         <a id="downloadLink" class="btn-secondary" download>⬇ 下载</a>
+        <button type="button" id="savePresetBtn" class="btn-secondary">💾 存成预设</button>
         <button type="button" id="retrySynthBtn" class="btn-secondary">🔁 再来一次</button>
       </div>
     </div>
