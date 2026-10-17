@@ -107,8 +107,10 @@
 
   async function loadVoices() {
     try {
-      const list = await api('/api/voices');
-      state.voices = Array.isArray(list) ? list : [];
+      const resp = await api('/api/voices');
+      // 后端返回 {"voices": [...]}，兼容纯数组
+      const list = Array.isArray(resp) ? resp : (resp && Array.isArray(resp.voices) ? resp.voices : []);
+      state.voices = list;
       els.voiceSelect.innerHTML = '';
       if (state.voices.length === 0) {
         const opt = document.createElement('option');
@@ -138,8 +140,10 @@
 
   async function loadHistory() {
     try {
-      const list = await api('/api/history');
-      renderHistory(Array.isArray(list) ? list : []);
+      const resp = await api('/api/history');
+      // 后端返回 {"history": [...]}，兼容纯数组
+      const list = Array.isArray(resp) ? resp : (resp && Array.isArray(resp.history) ? resp.history : []);
+      renderHistory(list);
     } catch (e) {
       renderHistory([]);
     }
@@ -165,6 +169,8 @@
     state.tone = tone;
     els.toneBtns.forEach((b) => b.classList.toggle('active', b.dataset.tone === tone));
     // 手选后，自动判断横幅只作参考展示，不再强制同步
+    // 兼容中文语气值：按钮上是中文名，后端 tone 传中文；'auto' 是自动判断的哨兵值
+    if (tone === 'auto') state.tone = 'auto';
   }
 
   // 本地关键词兜底（后端 /api/tone 不可用时）
@@ -296,7 +302,7 @@
     toneTag.className = 'history-tag';
     toneTag.textContent = item.tone || '自动';
     const timeEl = document.createElement('span');
-    timeEl.textContent = formatTime(item.created_at);
+    timeEl.textContent = formatTime(item.created_at || item.time);
     meta.append(langTag, toneTag, timeEl);
     body.append(textEl, meta);
 

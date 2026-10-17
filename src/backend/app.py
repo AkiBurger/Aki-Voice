@@ -153,9 +153,9 @@ def synthesize_text(req: SynthesizeRequest):
 
     lang = req.lang if req.lang in ("ja", "zh", "en") else "ja"
 
-    # 语气：自动就先判断，否则直接用用户选的
+    # 语气：自动就先判断，否则直接用用户选的（兼容前端的 'auto' 哨兵值）
     tone = req.tone
-    if tone == "自动" or tone not in TONES:
+    if tone in ("自动", "auto") or tone not in TONES:
         tone = judge_tone(text, lang)["tone"]
         tone_auto = True
     else:
