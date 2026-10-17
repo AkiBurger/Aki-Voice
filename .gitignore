@@ -1,0 +1,60 @@
+# ---- 模型权重：绝不允许进仓库 ----
+*.pth
+*.ckpt
+*.safetensors
+*.pt
+*.onnx
+*.bin
+!requirements*.txt
+
+# ---- 模型缓存 ----
+cache/
+models/
+checkpoints*/
+
+# ---- 音频素材与输出（含用户录音，隐私）----
+data/
+outputs/
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.opus
+
+# ---- 训练产物 ----
+logs/
+GPT_weights*/
+SoVITS_weights*/
+TEMP/
+
+# ---- Python ----
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+uv.lock
+
+# ---- 前端 ----
+node_modules/
+frontend/dist/
+
+# ---- 系统/编辑器 ----
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# ---- 敏感信息 ----
+.env
+*.key
+*.pem
+
+# ---- 临时 ----
+*.tmp
+*.log
