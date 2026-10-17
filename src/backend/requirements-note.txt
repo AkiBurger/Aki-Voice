@@ -1,0 +1,33 @@
+# 后端运行依赖说明
+
+后端**不新建虚拟环境**，直接用 GPT-SoVITS 自带的 venv 运行：
+
+```
+D:\Dev\ai\02_GPT-SoVITS_配音\.venv\Scripts\python.exe
+```
+
+该环境实测已包含（版本见括号）：
+
+- fastapi   (0.115.0)
+- uvicorn   (0.50.1)
+- requests  (2.34.2)
+
+其他模块全部用 Python 标准库（wave / struct / json / pathlib），无额外依赖。
+
+## 启动方式
+
+```
+cd D:\Dev\projects\voice-studio
+D:\Dev\ai\02_GPT-SoVITS_配音\.venv\Scripts\python.exe src\backend\app.py
+```
+
+监听 http://127.0.0.1:8017
+
+## 前置条件
+
+GPT-SoVITS 引擎服务要先在 9880 端口跑起来：
+
+```
+cd D:\Dev\ai\02_GPT-SoVITS_配音\GPT-SoVITS
+.venv\Scripts\python.exe api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer.yaml
+```

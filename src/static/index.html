@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AkiBurger Voice · 合成台</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2314161a'/><text x='50' y='68' font-size='48' text-anchor='middle' fill='%234a9eff' font-family='sans-serif' font-weight='bold'>A</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ===== 顶栏 ===== -->
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dot" aria-hidden="true"></span>
+    <span class="brand-name">AkiBurger Voice</span>
+    <span class="brand-sub">合成台</span>
+  </div>
+  <div class="topbar-right">
+    <label class="voice-picker" for="voiceSelect">
+      <span class="voice-picker-label">音色</span>
+      <select id="voiceSelect" disabled>
+        <option value="">加载中…</option>
+      </select>
+    </label>
+    <span id="engineBadge" class="badge badge-warn" title="声音引擎连接状态">引擎检查中…</span>
+  </div>
+</header>
+
+<main class="workspace">
+
+  <!-- ===== 引擎未就绪提示（默认隐藏）===== -->
+  <section id="engineDown" class="notice notice-warn hidden">
+    <div class="notice-icon" aria-hidden="true">🔌</div>
+    <div class="notice-body">
+      <div class="notice-title">声音引擎还没就绪</div>
+      <div class="notice-desc" id="engineDownDesc">
+        界面已经打开了，但后端服务没连上。<br>
+        试试：启动后端的 <code>backend.py</code>，然后回来点 <button type="button" class="linklike" id="retryBtn">重试连接</button>。
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 语言 ===== -->
+  <section class="card">
+    <div class="field-label">输出语言</div>
+    <div class="lang-group" role="radiogroup" aria-label="输出语言">
+      <button type="button" class="lang-btn" data-lang="zh">中文</button>
+      <button type="button" class="lang-btn" data-lang="en">英文</button>
+      <button type="button" class="lang-btn active" data-lang="ja">日文</button>
+    </div>
+  </section>
+
+  <!-- ===== 台词输入 ===== -->
+  <section class="card">
+    <div class="field-label" for="textInput">要念的话</div>
+    <textarea id="textInput" class="text-input" rows="7"
+      placeholder="在这里输入台词…&#10;&#10;长文案会自动切句再拼接，放心写。"
+      spellcheck="false"></textarea>
+    <div class="meta-row">
+      <span id="charCount">0 字</span>
+      <span class="meta-sep">·</span>
+      <span id="durationEst">预计约 0 秒</span>
+      <span class="meta-hint">（生成时长不受精确控制，此为估算）</span>
+      <button type="button" id="clearBtn" class="linklike">清空</button>
+    </div>
+  </section>
+
+  <!-- ===== 语气 ===== -->
+  <section class="card">
+    <div class="field-label">语气</div>
+    <div class="tone-detected" id="toneDetected" hidden>
+      <span class="tone-ai" aria-hidden="true">🤖</span>
+      <span>自动判断为「<strong id="toneDetectedName">—</strong>」</span>
+      <span class="tone-conf" id="toneDetectedConf"></span>
+    </div>
+    <div class="tone-group" role="radiogroup" aria-label="语气">
+      <button type="button" class="tone-btn" data-tone="平静">平静</button>
+      <button type="button" class="tone-btn" data-tone="开心">开心</button>
+      <button type="button" class="tone-btn" data-tone="悲伤">悲伤</button>
+      <button type="button" class="tone-btn" data-tone="生气">生气</button>
+      <button type="button" class="tone-btn" data-tone="惊讶">惊讶</button>
+      <button type="button" class="tone-btn" data-tone="害怕">害怕</button>
+      <button type="button" class="tone-btn" data-tone="auto">自动</button>
+    </div>
+    <div class="tone-note">
+      语气会自动从文本里判断，也可以自己点选。参考音频由软件在背后自动挑选，你不用管。
+    </div>
+  </section>
+
+  <!-- ===== 合成按钮 ===== -->
+  <section class="actions">
+    <button type="button" id="synthBtn" class="btn-primary" disabled>
+      <span class="btn-label">🔊 合成</span>
+      <span class="btn-hint">Ctrl+Enter</span>
+    </button>
+  </section>
+
+  <!-- ===== 合成中状态 ===== -->
+  <section id="synthProgress" class="card hidden" aria-live="polite">
+    <div class="progress-row">
+      <span class="spinner" aria-hidden="true"></span>
+      <span id="progressText">正在合成…</span>
+    </div>
+    <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+  </section>
+
+  <!-- ===== 结果 ===== -->
+  <section id="resultSection" class="card hidden">
+    <div class="field-label">结果</div>
+    <div class="result-main">
+      <audio id="resultAudio" controls preload="metadata"></audio>
+      <div class="result-actions">
+        <a id="downloadLink" class="btn-secondary" download>⬇ 下载</a>
+        <button type="button" id="retrySynthBtn" class="btn-secondary">🔁 再来一次</button>
+      </div>
+    </div>
+    <div class="result-meta" id="resultMeta"></div>
+  </section>
+
+  <!-- ===== 错误提示 ===== -->
+  <section id="errorBox" class="notice notice-danger hidden" aria-live="assertive">
+    <div class="notice-icon" aria-hidden="true">⚠️</div>
+    <div class="notice-body">
+      <div class="notice-title" id="errorTitle">合成失败</div>
+      <div class="notice-desc" id="errorDesc"></div>
+    </div>
+  </section>
+
+  <!-- ===== 历史 ===== -->
+  <section class="card">
+    <div class="field-label">历史记录</div>
+    <div id="historyList" class="history-list">
+      <div class="history-empty" id="historyEmpty">还没有合成记录。合成的音频会出现在这里。</div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <span>本地运行，你的声音和文字不会离开这台电脑。</span>
+  <span class="foot-sep">·</span>
+  <span id="footEngine">引擎状态未知</span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
