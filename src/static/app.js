@@ -36,6 +36,7 @@
     engineDownDesc: $('engineDownDesc'),
     retryBtn: $('retryBtn'),
     previewBtn: $('previewBtn'),
+    renameModelBtn: $('renameModelBtn'),
     previewAudio: $('previewAudio'),
     langBtns: [...document.querySelectorAll('.lang-btn')],
     inLangBtns: [...document.querySelectorAll('.in-lang-btn')],
@@ -153,10 +154,12 @@
       for (const v of state.voices) {
         const opt = document.createElement('option');
         opt.value = v.path || v.name || '';
-        opt.textContent = v.name || '未命名音色';
+        opt.textContent = v.display || v.label || v.name || '未命名';
+        if (v.file) opt.dataset.file = v.file;
         els.voiceSelect.appendChild(opt);
       }
       els.voiceSelect.disabled = false;
+      if (els.renameModelBtn) els.renameModelBtn.disabled = false;
       // 记忆上次选择
       const last = localStorage.getItem('abv:voice');
       if (last && state.voices.some((v) => (v.path || v.name) === last)) {
@@ -337,6 +340,35 @@
       els.synthBtn.disabled = !state.engineUp;
       els.synthBtn.querySelector('.btn-label').textContent = '🔊 合成';
       els.synthProgress.classList.add('hidden');
+    }
+  }
+
+  // ---------- 模型改名 ----------
+  async function renameCurrentModel() {
+    const idx = els.voiceSelect.selectedIndex;
+    const opt = idx >= 0 ? els.voiceSelect.options[idx] : null;
+    const file = opt && opt.dataset ? opt.dataset.file : '';
+    if (!file) {
+      showError('没有可改名的模型', '先等模型列表加载出来。');
+      return;
+    }
+    const old = opt.textContent;
+    const input = window.prompt('给这个模型起个名字（留空 = 恢复默认 e 编号）\n当前：' + old, old);
+    if (input === null) return;   // 取消
+    try {
+      const res = await api('/api/models/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: file, name: input }),
+      });
+      await loadVoices();
+      const newName = res && res.model ? (res.model.display || res.model.name) : input;
+      // 重新选中刚改名的那个
+      for (const o of els.voiceSelect.options) {
+        if (o.dataset && o.dataset.file === file) { els.voiceSelect.value = o.value; o.selected = true; break; }
+      }
+    } catch (e) {
+      showError('改名失败', String(e.message || e));
     }
   }
 
@@ -719,6 +751,7 @@
   els.retryBtn.addEventListener('click', boot);
   els.previewBtn.addEventListener('click', previewVoice);
   els.savePresetBtn.addEventListener('click', saveCurrentPreset);
+  if (els.renameModelBtn) els.renameModelBtn.addEventListener('click', renameCurrentModel);
 
   // ---------- 音质微调 ----------
   if (els.advToggleBtn) {

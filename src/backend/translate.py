@@ -1,16 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-本地翻译（中文 → 日文 等多语言互译）。
+翻译调度：优先用本地 Qwen（质量最好），没有就用内置小模型（零依赖）。
 
-用本机 Ollama 的 Qwen3 模型，完全离线，文字不出电脑。
-关键点：Qwen3 默认会输出思考过程，用 `/no_think` 关掉，否则会污染译文。
+两套引擎：
+1. 本地 Qwen（Ollama）：口语感最好，需要 Ollama 在运行
+2. 内置 opus-mt-zh-ja：300MB 小模型，跑 CPU，不需要任何外部服务
+
+用户选了"本地优先用 qwen，但不要开机自启 Ollama"，
+所以这里的策略是：Ollama 开着就用它，没开就自动用内置模型，用户完全无感。
 """
 import os
 import re
 import requests
 
+import translate_local
+
 OLLAMA_URL = os.environ.get("ABV_OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("ABV_OLLAMA_MODEL", "qwen3-local:latest")
+
+# 翻译引擎策略：auto = 有 Qwen 就用 Qwen，否则内置；builtin = 只用内置
+ENGINE_MODE = os.environ.get("ABV_TRANSLATE_ENGINE", "auto")
 
 LANG_NAME = {
     "zh": "简体中文",
@@ -27,7 +36,9 @@ class TranslateError(Exception):
 
 
 def is_translator_up(timeout: float = 1.5) -> bool:
-    """本机 Ollama 活着吗。"""
+    """翻译能力是否可用：Qwen 活着，或者内置模型已下载。"""
+    if translate_local.is_available():
+        return True
     try:
         r = requests.get(f"{OLLAMA_URL}/api/tags", timeout=timeout)
         return r.status_code == 200
@@ -95,24 +106,51 @@ def _split_for_translate(text: str) -> list:
     return chunks or [text]
 
 
-def translate(text: str, src: str, dst: str) -> str:
+def translate_with_engine(text: str, src: str, dst: str):
     """
-    把 text 从 src 语言翻译成 dst 语言。src == dst 时原样返回。
-    长文本自动按句切块翻译再拼起来。
+    把 text 从 src 语言翻译成 dst 语言，返回 (译文, 用的哪个引擎)。
+    策略：
+      1. 内置模型支持这个方向，且（Qwen 不可用 或 强制内置）→ 用内置（快、零依赖）
+      2. 否则用 Qwen（质量最好）
+      3. Qwen 失败且内置支持 → 退回内置
     """
     text = (text or "").strip()
     if not text:
-        return ""
+        return "", "none"
     if src == dst:
-        return text
+        return text, "none"
 
-    chunks = _split_for_translate(text)
-    if len(chunks) == 1:
-        return _translate_chunk(chunks[0], src, dst)
+    qwen_up = is_translator_up()
+    builtin_ok = translate_local.is_available() and translate_local.supported(src, dst)
 
-    out = []
-    for c in chunks:
-        out.append(_translate_chunk(c, src, dst).strip())
-    # 日文/英文之间用空格拼接，中文直接拼
-    joiner = "" if dst == "zh" else " "
-    return joiner.join(out)
+    # 内置模型优先的情况：强制 builtin，或 Qwen 不可用
+    if builtin_ok and (ENGINE_MODE == "builtin" or not qwen_up):
+        try:
+            return translate_local.translate(text, src, dst), "builtin"
+        except Exception as e:
+            if not qwen_up:
+                raise TranslateError(f"内置翻译失败：{type(e).__name__}")
+            # Qwen 可用就继续往下走
+
+    # Qwen 优先
+    if qwen_up and ENGINE_MODE != "builtin":
+        try:
+            chunks = _split_for_translate(text)
+            joiner = "" if dst == "zh" else " "
+            return joiner.join([_translate_chunk(c, src, dst).strip() for c in chunks]), "qwen"
+        except TranslateError:
+            if builtin_ok:
+                return translate_local.translate(text, src, dst), "builtin"
+            raise
+
+    # 兜底：内置
+    if builtin_ok:
+        return translate_local.translate(text, src, dst), "builtin"
+
+    raise TranslateError("没有可用的翻译引擎：内置模型未下载，且 Ollama 没启动")
+
+
+def translate(text: str, src: str, dst: str) -> str:
+    """兼容旧调用：只返回译文。"""
+    out, _engine = translate_with_engine(text, src, dst)
+    return out

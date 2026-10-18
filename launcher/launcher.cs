@@ -146,6 +146,17 @@ namespace AkiBurgerVoice
                 SetStatus("加载声音模型...", "");
                 TryAttachWeights();
 
+                // ---------- 2.5 翻译服务（可选，有就用质量更好的 Qwen）----------
+                if (!PortListening(11434))
+                {
+                    SetStatus("启动翻译服务...", "可选：让中→日翻译更自然");
+                    StartOllama();
+                }
+                else
+                {
+                    Log("翻译服务已在运行（会优先用 Qwen 翻译）");
+                }
+
                 // ---------- 3. 后端 ----------
                 if (PortListening(8017))
                 {
@@ -224,6 +235,34 @@ namespace AkiBurgerVoice
             catch { }
             Log("启动: " + exe + " " + args);
             Process.Start(psi);
+        }
+
+        void StartOllama()
+        {
+            try
+            {
+                string exe = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    @"Programs\Ollama\ollama app.exe");
+                if (!File.Exists(exe))
+                {
+                    Log("没装 Ollama，翻译将用内置小模型（不影响使用）");
+                    return;
+                }
+                var psi = new ProcessStartInfo
+                {
+                    FileName = exe,
+                    UseShellExecute = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                };
+                Process.Start(psi);
+                Log("已启动 Ollama（隐藏窗口）");
+                // 不等它就绪：Ollama 起得慢也没关系，后端会自动回退到内置模型
+            }
+            catch (Exception ex)
+            {
+                Log("启动 Ollama 失败（翻译用内置小模型）: " + ex.Message);
+            }
         }
 
         bool PortListening(int port)

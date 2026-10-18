@@ -33,7 +33,7 @@ from pydantic import BaseModel
 from engine import EngineError, is_engine_up, synthesize
 from emotion import judge_tone, TONES
 from text_split import estimate_seconds, split_sentences
-from translate import TranslateError, is_translator_up, translate
+from translate import TranslateError, is_translator_up, translate, translate_with_engine
 
 # ---------- 路径 ----------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # voice-studio/
@@ -126,12 +126,32 @@ def default_ref_file():
     return files[0] if files else None
 
 
+MODEL_NAMES_FILE = DATA_DIR / "models.json"      # 用户自定义的模型名字
+
+
+def load_model_names() -> dict:
+    """读取用户给模型起的名字：{权重文件名: 显示名}。"""
+    try:
+        if MODEL_NAMES_FILE.exists():
+            return json.loads(MODEL_NAMES_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def save_model_names(names: dict) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    MODEL_NAMES_FILE.write_text(json.dumps(names, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def list_models() -> list:
     """
     扫描 GPT-SoVITS 的权重目录，列出可用的训练模型。
     不写死在配置里 —— 目录里有什么就显示什么。
     命名约定：SoVITS 文件名里的 _eN_ 就是训练轮数（如 setsuna_light_e2_s362.pth → e2）。
+    用户可以给模型改名，名字存在 data/models.json 里。
     """
+    custom = load_model_names()
     models = []
     if SOVITS_WEIGHTS_DIR.exists():
         for f in sorted(SOVITS_WEIGHTS_DIR.glob("*.pth")):
@@ -139,9 +159,13 @@ def list_models() -> list:
             if not m:
                 continue
             epoch = int(m.group(1))
+            default_name = f"e{epoch}"
             models.append({
                 "id": f"e{epoch}",
-                "label": f"e{epoch}",
+                "label": custom.get(f.name) or default_name,
+                "name": custom.get(f.name) or default_name,
+                "default_name": default_name,
+                "renamed": bool(custom.get(f.name)),
                 "epoch": epoch,
                 "file": f.name,
             })
@@ -217,6 +241,41 @@ def models():
     }
 
 
+class RenameModelRequest(BaseModel):
+    file: str          # 权重文件名，如 setsuna_light_e2_s362.pth
+    name: str = ""     # 新名字；留空 = 恢复默认 eN
+
+
+@app.post("/api/models/rename")
+def rename_model(req: RenameModelRequest):
+    """
+    给模型改名（比如 e2 → 我的声音）。
+    名字存在 data/models.json，不改权重文件名，随时可以改回来。
+    """
+    if SOVITS_WEIGHTS_DIR is None or not (SOVITS_WEIGHTS_DIR / req.file).exists():
+        raise HTTPException(status_code=404, detail="找不到这个模型文件")
+
+    new_name = (req.name or "").strip()
+    if len(new_name) > 24:
+        raise HTTPException(status_code=400, detail="名字太长了，24 个字以内")
+    # 过滤掉奇怪字符，只留中英文数字和少量符号
+    if new_name and not re.match(r"^[\w\u4e00-\u9fa5 ·\-\.（）()]+$", new_name):
+        raise HTTPException(status_code=400, detail="名字里有不支持的字符")
+
+    names = load_model_names()
+    if new_name:
+        names[req.file] = new_name
+    else:
+        names.pop(req.file, None)     # 空名字 = 恢复默认
+    save_model_names(names)
+
+    # 返回改名后的模型信息
+    for m in list_models():
+        if m["file"] == req.file:
+            return {"ok": True, "model": m}
+    return {"ok": True}
+
+
 @app.get("/api/voices")
 def voices():
     """
@@ -232,7 +291,8 @@ def voices():
         return {"voices": [{"name": "default", "label": "default", "char": "default", "path": str(ref)}]}
     return {
         "voices": [
-            {"name": m["id"], "label": m["label"], "char": "model", "path": str(ref), "epoch": m["epoch"]}
+            {"name": m["id"], "label": m["label"], "display": m["name"], "char": "model",
+             "path": str(ref), "epoch": m["epoch"], "file": m["file"]}
             for m in ms
         ]
     }
@@ -270,9 +330,10 @@ def synthesize_text(req: SynthesizeRequest):
     # ---------- 翻译（输入语言 ≠ 输出语言时）----------
     translated_text = raw_text
     translated = False
+    translate_engine = ""
     if input_lang != lang:
         try:
-            translated_text = translate(raw_text, input_lang, lang)
+            translated_text, translate_engine = translate_with_engine(raw_text, input_lang, lang)
             translated = True
         except TranslateError as e:
             raise HTTPException(status_code=503, detail=str(e))
@@ -373,6 +434,7 @@ def synthesize_text(req: SynthesizeRequest):
         "original_text": raw_text,
         "translated_text": text,
         "translated": translated,
+        "translated_by": translate_engine,   # qwen / builtin / none
         "input_lang": input_lang,
         "output_lang": lang,
     }
