@@ -231,3 +231,47 @@ def current_dataset() -> dict:
         "clean_count": clean_count,
         "has_list": clean.exists(),
     }
+
+def list_materials() -> dict:
+    """已导入的素材列表（名字/时长/大小）。"""
+    import soundfile as sf
+    files = []
+    total_sec = 0.0
+    wavs = sorted(WAV_DIR.glob("*.wav")) if WAV_DIR.exists() else []
+    for w in wavs:
+        try:
+            info = sf.info(str(w))
+            dur = round(info.frames / info.samplerate, 2)
+            total_sec += dur
+        except Exception:
+            dur = None
+        files.append({
+            "name": w.name,
+            "duration": dur,
+            "size_kb": round(w.stat().st_size / 1024, 1),
+        })
+    return {
+        "count": len(files),
+        "total_min": round(total_sec / 60, 1),
+        "files": files,
+    }
+
+
+def delete_materials(name: str = "", delete_all: bool = False) -> dict:
+    """删除已导入素材（按文件名或全部）。"""
+    wavs = sorted(WAV_DIR.glob("*.wav")) if WAV_DIR.exists() else []
+    removed = 0
+    if delete_all:
+        for w in wavs:
+            try:
+                w.unlink()
+                removed += 1
+            except Exception:
+                pass
+    elif name:
+        target = WAV_DIR / name
+        if not target.exists():
+            raise FileNotFoundError(f"找不到文件：{name}")
+        target.unlink()
+        removed = 1
+    return {"ok": True, "removed": removed, "remain": len(list(WAV_DIR.glob("*.wav")))}

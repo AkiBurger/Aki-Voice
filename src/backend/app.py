@@ -38,6 +38,8 @@ from translate import TranslateError, is_translator_up, translate, translate_wit
 import evaluate as evaluator   # 声纹打分（评测用）
 import trainer                 # 训练任务管理（第三期）
 import data_prep               # 训练素材：导入/识别/清洗（第三期）
+import qc                      # 质检（第四期）
+import annotate                # 标注（第四期）
 
 # ---------- 路径 ----------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # voice-studio/
@@ -552,6 +554,75 @@ def serve_info():
         "frontend": "/static -> /src/static",
         "output": "/static/output -> outputs",
     }
+
+
+# ============================================================
+# 素材 / 质检 / 标注（流程前三步）
+# ============================================================
+class MaterialDeleteRequest(BaseModel):
+    name: str = ""
+    all: bool = False
+
+
+class AnnotationSaveRequest(BaseModel):
+    wav: str
+    text: str
+
+
+@app.get("/api/material/list")
+def material_list():
+    """已导入的素材列表。"""
+    return data_prep.list_materials()
+
+
+@app.get("/api/material/audio")
+def material_audio(name: str):
+    """试听已导入的素材（直接流式返回 wav）。"""
+    p = data_prep.WAV_DIR / Path(name).name
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="找不到这个音频")
+    return FileResponse(str(p), media_type="audio/wav")
+
+
+@app.post("/api/material/delete")
+def material_delete(req: MaterialDeleteRequest):
+    """删除素材（按名字或全部）。"""
+    try:
+        return data_prep.delete_materials(req.name, req.all)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.post("/api/qc/run")
+def qc_run():
+    """跑质检（音频 + 标注文本）。"""
+    try:
+        return {"ok": True, "report": qc.run_qc()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"质检失败：{e}")
+
+
+@app.get("/api/qc/report")
+def qc_report():
+    """上一次质检报告。"""
+    return qc.load_report()
+
+
+@app.get("/api/annotation/list")
+def annotation_list():
+    """标注列表（音频 + 文本）。"""
+    data = annotate.load_entries()
+    data["stats"] = annotate.stats()
+    return data
+
+
+@app.post("/api/annotation/save")
+def annotation_save(req: AnnotationSaveRequest):
+    """保存一条标注文本。"""
+    try:
+        return annotate.save_text(req.wav, req.text)
+    except (FileNotFoundError, ValueError, KeyError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ============================================================

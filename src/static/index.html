@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AkiBurger Voice · 合成台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2314161a'/><text x='50' y='68' font-size='48' text-anchor='middle' fill='%234a9eff' font-family='sans-serif' font-weight='bold'>A</text></svg>">
-<link rel="stylesheet" href="styles.css?v=20261018m">
+<link rel="stylesheet" href="styles.css?v=20261018n">
 </head>
 <body>
 
@@ -31,9 +31,9 @@
 
 <!-- ===== 页面导航（可点击切换）===== -->
 <nav class="flowbar" aria-label="页面导航">
-  <button type="button" class="flow-step future" disabled title="开发中"><span class="flow-dot">○</span>素材</button>
-  <button type="button" class="flow-step future" disabled title="开发中"><span class="flow-dot">○</span>质检</button>
-  <button type="button" class="flow-step future" disabled title="开发中"><span class="flow-dot">○</span>标注</button>
+  <button type="button" class="flow-step nav" data-view="material" title="打开素材页：导入音频"><span class="flow-dot">◉</span>素材<b class="nav-hint">导入音频</b></button>
+  <button type="button" class="flow-step nav" data-view="qc" title="打开质检页：检查音频/文本问题"><span class="flow-dot">◉</span>质检<b class="nav-hint">检查问题</b></button>
+  <button type="button" class="flow-step nav" data-view="annotation" title="打开标注页：核对/修改文本"><span class="flow-dot">◉</span>标注<b class="nav-hint">核对文本</b></button>
   <button type="button" class="flow-step nav" data-view="train" title="打开训练页：训练/更新声音模型"><span class="flow-dot">◉</span>训练<b class="nav-hint">训练模型</b></button>
   <button type="button" class="flow-step nav" data-view="eval" title="打开评测页：给声音打分"><span class="flow-dot">◉</span>评测<b class="nav-hint">打分对比</b></button>
   <button type="button" class="flow-step nav current" data-view="synth" title="打开合成页：文字转语音"><span class="flow-dot">●</span>合成<b class="nav-hint">文字转语音</b></button>
@@ -239,12 +239,12 @@
   </section>
   </div>
 
-  <!-- ===== 训练页 ===== -->
-  <div class="view hidden" id="view-train">
+  <!-- ===== 素材页 ===== -->
+  <div class="view hidden" id="view-material">
 
   <header class="page-head">
-    <h2 class="page-title">🎬 训练声音模型</h2>
-    <p class="page-sub">用准备好的音频训练或更新音色模型。训练完成后会自动挂到合成页使用，建议再跑一次评测对比分数。</p>
+    <h2 class="page-title">🎵 素材</h2>
+    <p class="page-sub">第一步：把要用的声音素材导入进来。可以选一个文件夹，扫描后按需导入。</p>
   </header>
 
   <!-- ===== 训练素材（提交音频） ===== -->
@@ -276,6 +276,77 @@
       <pre class="train-log" id="dataJobLog"></pre>
     </div>
   </section>
+
+  <section class="card">
+    <div class="history-head">
+      <div class="field-label" style="margin:0;border:0;padding:0;">已导入的素材</div>
+      <div class="material-actions">
+        <button type="button" id="materialRefreshBtn" class="btn-secondary btn-sm">刷新</button>
+        <button type="button" id="materialClearBtn" class="btn-danger-link">🗑 全部清空</button>
+      </div>
+    </div>
+    <div class="material-stats" id="materialStats">正在读取…</div>
+    <div class="material-list" id="materialList"></div>
+  </section>
+
+  </div>
+
+  <!-- ===== 质检页 ===== -->
+  <div class="view hidden" id="view-qc">
+
+  <header class="page-head">
+    <h2 class="page-title">🔍 质检</h2>
+    <p class="page-sub">第二步：自动检查素材有没有问题（太短/太长/太小/爆音/静音多/文本乱码），问题音频不建议拿去训练。</p>
+  </header>
+
+  <section class="card">
+    <div class="history-head">
+      <div class="field-label" style="margin:0;border:0;padding:0;">检查结果</div>
+      <button type="button" id="qcRunBtn" class="btn-secondary btn-sm">开始质检</button>
+    </div>
+    <div id="qcSummary" class="qc-summary">还没检查过。点「开始质检」，几百段音频大约十几秒。</div>
+    <div class="eval-filter" id="qcFilter" hidden>
+      <button type="button" class="filter-btn active" data-filter="all">全部</button>
+      <button type="button" class="filter-btn" data-filter="warn">警告</button>
+      <button type="button" class="filter-btn" data-filter="fail">不合格</button>
+    </div>
+    <div class="qc-list" id="qcList"></div>
+  </section>
+
+  </div>
+
+  <!-- ===== 标注页 ===== -->
+  <div class="view hidden" id="view-annotation">
+
+  <header class="page-head">
+    <h2 class="page-title">✍️ 标注</h2>
+    <p class="page-sub">第三步：核对每段音频对应的文本。识别错的地方直接改，改完点保存，训练用的就是改后的文本。</p>
+  </header>
+
+  <section class="card">
+    <div class="history-head">
+      <div class="field-label" style="margin:0;border:0;padding:0;">标注列表</div>
+      <div class="material-actions">
+        <button type="button" id="annRefreshBtn" class="btn-secondary btn-sm">刷新</button>
+      </div>
+    </div>
+    <div class="material-stats" id="annStats">正在读取…</div>
+    <div class="eval-filter" id="annFilter" hidden>
+      <button type="button" class="filter-btn active" data-filter="all">全部</button>
+      <button type="button" class="filter-btn" data-filter="short">文本过短</button>
+      <button type="button" class="filter-btn" data-filter="long">文本过长</button>
+    </div>
+    <div class="ann-list" id="annList"></div>
+  </section>
+
+  </div>
+  <!-- ===== 训练页 ===== -->
+  <div class="view hidden" id="view-train">
+
+  <header class="page-head">
+    <h2 class="page-title">🎬 训练声音模型</h2>
+    <p class="page-sub">用准备好的音频训练或更新音色模型。训练完成后会自动挂到合成页使用，建议再跑一次评测对比分数。</p>
+  </header>
 
   <!-- ===== 训练 ===== -->
   <section class="card" id="trainSection">
@@ -379,6 +450,6 @@
   <span id="footEngine">引擎状态未知</span>
 </footer>
 
-<script src="app.js?v=20261018m"></script>
+<script src="app.js?v=20261018n"></script>
 </body>
 </html>

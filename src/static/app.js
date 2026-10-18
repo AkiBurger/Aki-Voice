@@ -110,6 +110,21 @@
     dataJobStage: $('dataJobStage'),
     dataJobBar: $('dataJobBar'),
     dataJobLog: $('dataJobLog'),
+    // 素材页
+    materialStats: $('materialStats'),
+    materialList: $('materialList'),
+    materialRefreshBtn: $('materialRefreshBtn'),
+    materialClearBtn: $('materialClearBtn'),
+    // 质检页
+    qcRunBtn: $('qcRunBtn'),
+    qcSummary: $('qcSummary'),
+    qcFilter: $('qcFilter'),
+    qcList: $('qcList'),
+    // 标注页
+    annStats: $('annStats'),
+    annList: $('annList'),
+    annFilter: $('annFilter'),
+    annRefreshBtn: $('annRefreshBtn'),
     evalFilter: document.getElementById('evalFilter'),
     // 评测
     evalBtn: $('evalBtn'),
@@ -126,7 +141,7 @@
   };
 
   // ---------- 页面切换（顶部标签）----------
-  const VIEW_NAMES = ['synth', 'train', 'eval'];
+  const VIEW_NAMES = ['synth', 'train', 'eval', 'material', 'qc', 'annotation'];
 
   function switchView(name) {
     if (!VIEW_NAMES.includes(name)) name = 'synth';
@@ -147,10 +162,13 @@
       refreshTrainStatus();
       updateDataStatus();
     }
+    if (name === 'material') { loadMaterials(); updateDataStatus(); }
+    if (name === 'qc') { loadQcReport(); }
+    if (name === 'annotation') { loadAnnotations(); }
     if (name === 'eval') {
       loadEvalHistory();
     }
-    const TITLES = { synth: '语音合成', train: '训练模型', eval: '评测打分' };
+    const TITLES = { synth: '语音合成', train: '训练模型', eval: '评测打分', material: '素材', qc: '质检', annotation: '标注' };
     try { document.title = (TITLES[name] || '语音合成') + ' · AkiBurger Voice'; } catch (e) {}
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
   }
@@ -413,6 +431,234 @@
       els.synthBtn.disabled = !state.engineUp;
       els.synthBtn.querySelector('.btn-label').textContent = '🔊 合成';
       els.synthProgress.classList.add('hidden');
+    }
+  }
+
+  // ---------- 素材页 ----------
+  function audioPlay(url) {
+    if (state.historyPlayer) state.historyPlayer.pause();
+    const a = new Audio(url);
+    state.historyPlayer = a;
+    a.play().catch(() => {});
+  }
+
+  async function loadMaterials() {
+    if (!els.materialStats) return;
+    try {
+      const d = await api('/api/material/list');
+      els.materialStats.textContent =
+        d.count > 0 ? `已导入 ${d.count} 段 · 总时长约 ${d.total_min} 分钟` : '还没有导入任何素材';
+      els.materialList.innerHTML = '';
+      const shown = d.files.slice(0, 300);
+      for (const f of shown) {
+        const row = document.createElement('div');
+        row.className = 'material-row';
+        const play = document.createElement('span');
+        play.className = 'history-play';
+        play.textContent = '▶';
+        play.addEventListener('click', () => audioPlay('/api/material/audio?name=' + encodeURIComponent(f.name)));
+        const name = document.createElement('span');
+        name.className = 'material-name';
+        name.textContent = f.name;
+        const dur = document.createElement('span');
+        dur.className = 'material-dur';
+        dur.textContent = f.duration != null ? f.duration + 's' : '—';
+        const del = document.createElement('button');
+        del.className = 'btn-danger-link';
+        del.textContent = '删除';
+        del.addEventListener('click', () => deleteMaterial(f.name));
+        row.append(play, name, dur, del);
+        els.materialList.appendChild(row);
+      }
+      if (d.count > shown.length) {
+        const more = document.createElement('div');
+        more.className = 'eval-detail-empty';
+        more.textContent = `只显示前 ${shown.length} 条（共 ${d.count} 条）`;
+        els.materialList.appendChild(more);
+      }
+    } catch (e) {
+      els.materialStats.textContent = '读取失败：' + (e.message || e);
+    }
+  }
+
+  async function deleteMaterial(name) {
+    if (!window.confirm('删除这段素材？')) return;
+    try {
+      await api('/api/material/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      loadMaterials();
+      updateDataStatus();
+    } catch (e) {
+      showError('删除失败', String(e.message || e));
+    }
+  }
+
+  async function clearMaterials() {
+    if (!window.confirm('清空所有已导入素材？这个操作不能撤销（原始文件不受影响）。')) return;
+    try {
+      await api('/api/material/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true }),
+      });
+      loadMaterials();
+      updateDataStatus();
+    } catch (e) {
+      showError('清空失败', String(e.message || e));
+    }
+  }
+
+  // ---------- 质检页 ----------
+  let qcLastReport = null;
+
+  async function runQc() {
+    els.qcRunBtn.disabled = true;
+    els.qcSummary.textContent = '正在检查，请稍等…';
+    try {
+      const res = await api('/api/qc/run', { method: 'POST' });
+      renderQcReport(res.report);
+    } catch (e) {
+      els.qcSummary.textContent = '检查失败：' + (e.message || e);
+    } finally {
+      els.qcRunBtn.disabled = false;
+    }
+  }
+
+  async function loadQcReport() {
+    try {
+      const r = await api('/api/qc/report');
+      if (r && r.summary) renderQcReport(r);
+    } catch (e) {
+      /* 没有报告就忽略 */
+    }
+  }
+
+  function renderQcReport(r) {
+    qcLastReport = r;
+    const s = r.summary || {};
+    els.qcSummary.textContent =
+      `共 ${s.total || 0} 段：通过 ${s.pass || 0} · 警告 ${s.warn || 0} · 不合格 ${s.fail || 0}` +
+      (r.duplicate_texts ? ` · 重复文本 ${r.duplicate_texts} 句` : '');
+    if (els.qcFilter) els.qcFilter.hidden = false;
+    renderQcList(state.qcFilter || 'all');
+  }
+
+  function renderQcList(filter) {
+    if (!els.qcList) return;
+    els.qcList.innerHTML = '';
+    const items = ((qcLastReport && qcLastReport.items) || []).filter((it) =>
+      filter === 'all' ? it.level !== 'pass' : it.level === filter
+    );
+    if (els.qcFilter) {
+      els.qcFilter.querySelectorAll('.filter-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.filter === filter);
+      });
+    }
+    if (!items.length) {
+      const ok = document.createElement('div');
+      ok.className = 'eval-detail-empty';
+      ok.textContent = filter === 'all' ? '很好：没有发现问题样本。' : '这一档没有样本。';
+      els.qcList.appendChild(ok);
+      return;
+    }
+    for (const it of items.slice(0, 300)) {
+      const row = document.createElement('div');
+      row.className = 'qc-row';
+      const play = document.createElement('span');
+      play.className = 'history-play';
+      play.textContent = '▶';
+      play.addEventListener('click', () => audioPlay('/api/material/audio?name=' + encodeURIComponent(it.name)));
+      const lv = document.createElement('span');
+      lv.className = 'lv-chip ' + (it.level === 'fail' ? 'lv-bad' : 'lv-mid');
+      lv.textContent = it.level === 'fail' ? '不合格' : '警告';
+      const name = document.createElement('span');
+      name.className = 'qc-name';
+      name.textContent = it.name;
+      const reason = document.createElement('span');
+      reason.className = 'qc-reason';
+      reason.textContent = (it.reasons || []).join('；') || '—';
+      row.append(play, lv, name, reason);
+      els.qcList.appendChild(row);
+    }
+  }
+
+  // ---------- 标注页 ----------
+  let annLastData = null;
+
+  async function loadAnnotations() {
+    if (!els.annStats) return;
+    try {
+      const d = await api('/api/annotation/list');
+      annLastData = d;
+      const st = d.stats || {};
+      els.annStats.textContent =
+        `共 ${d.count} 条标注` +
+        (st.empty ? ` · 缺文本 ${st.empty}` : '') +
+        (st.short ? ` · 过短 ${st.short}` : '') +
+        (st.long ? ` · 过长 ${st.long}` : '') +
+        (st.missing_audio ? ` · 音频缺失 ${st.missing_audio}` : '');
+      if (els.annFilter) els.annFilter.hidden = false;
+      renderAnnotations(state.annFilter || 'all');
+    } catch (e) {
+      els.annStats.textContent = '读取失败：' + (e.message || e);
+    }
+  }
+
+  function renderAnnotations(filter) {
+    if (!els.annList || !annLastData) return;
+    els.annList.innerHTML = '';
+    if (els.annFilter) {
+      els.annFilter.querySelectorAll('.filter-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.filter === filter);
+      });
+    }
+    let entries = annLastData.entries || [];
+    if (filter === 'short') entries = entries.filter((e) => e.text_len > 0 && e.text_len < 4);
+    if (filter === 'long') entries = entries.filter((e) => e.text_len > 60);
+    if (!entries.length) {
+      const empty = document.createElement('div');
+      empty.className = 'eval-detail-empty';
+      empty.textContent = '没有符合条件的条目。';
+      els.annList.appendChild(empty);
+      return;
+    }
+    for (const e of entries.slice(0, 300)) {
+      const row = document.createElement('div');
+      row.className = 'ann-row';
+      const play = document.createElement('span');
+      play.className = 'history-play';
+      play.textContent = '▶';
+      play.addEventListener('click', () => audioPlay('/api/material/audio?name=' + encodeURIComponent(e.name)));
+      const meta = document.createElement('div');
+      meta.className = 'ann-meta';
+      meta.textContent = e.name + (e.duration != null ? ` · ${e.duration}s` : '');
+      const input = document.createElement('input');
+      input.className = 'ann-input';
+      input.type = 'text';
+      input.value = e.text || '';
+      const save = document.createElement('button');
+      save.className = 'btn-secondary btn-sm';
+      save.textContent = '保存';
+      save.addEventListener('click', async () => {
+        save.disabled = true;
+        try {
+          await api('/api/annotation/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wav: e.wav, text: input.value }),
+          });
+          save.textContent = '已保存';
+          setTimeout(() => { save.textContent = '保存'; save.disabled = false; }, 1200);
+        } catch (err) {
+          showError('保存失败', String(err.message || err));
+          save.disabled = false;
+        }
+      });
+      row.append(play, meta, input, save);
+      els.annList.appendChild(row);
     }
   }
 
@@ -1158,6 +1404,23 @@
   if (els.scanBtn) els.scanBtn.addEventListener('click', scanSource);
   if (els.importBtn) els.importBtn.addEventListener('click', importAudio);
   if (els.prepareBtn) els.prepareBtn.addEventListener('click', prepareData);
+  // 素材页
+  if (els.materialRefreshBtn) els.materialRefreshBtn.addEventListener('click', loadMaterials);
+  if (els.materialClearBtn) els.materialClearBtn.addEventListener('click', clearMaterials);
+  // 质检页
+  if (els.qcRunBtn) els.qcRunBtn.addEventListener('click', runQc);
+  if (els.qcFilter) {
+    els.qcFilter.querySelectorAll('.filter-btn').forEach((b) => {
+      b.addEventListener('click', () => { state.qcFilter = b.dataset.filter; renderQcList(state.qcFilter); });
+    });
+  }
+  // 标注页
+  if (els.annRefreshBtn) els.annRefreshBtn.addEventListener('click', loadAnnotations);
+  if (els.annFilter) {
+    els.annFilter.querySelectorAll('.filter-btn').forEach((b) => {
+      b.addEventListener('click', () => { state.annFilter = b.dataset.filter; renderAnnotations(state.annFilter); });
+    });
+  }
   if (els.evalFilter) {
     els.evalFilter.querySelectorAll('.filter-btn').forEach((b) => {
       b.addEventListener('click', () => {

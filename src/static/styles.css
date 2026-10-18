@@ -1028,3 +1028,41 @@ button.flow-step.future:disabled {
   background: rgba(74, 158, 255, 0.10);
 }
 .eval-detail-empty { color: var(--text-dim); font-size: var(--fs-dim); padding: 6px 2px; }
+
+/* ============ 素材页 ============ */
+.material-actions { display: flex; gap: var(--s2); align-items: center; }
+.material-stats { color: var(--text-dim); font-size: var(--fs-dim); margin: var(--s2) 0; }
+.material-list { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
+.material-row {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: 3px 4px; border-bottom: 1px solid var(--border);
+  font-size: var(--fs-dim);
+}
+.material-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.material-dur { color: var(--text-dim); font-variant-numeric: tabular-nums; width: 56px; text-align: right; }
+
+/* ============ 质检页 ============ */
+.qc-summary { color: var(--text-dim); font-size: var(--fs-dim); margin: var(--s2) 0; line-height: 1.6; }
+.qc-list { display: flex; flex-direction: column; max-height: 360px; overflow-y: auto; }
+.qc-row {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: 3px 4px; border-bottom: 1px solid var(--border);
+  font-size: var(--fs-dim);
+}
+.qc-name { width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qc-reason { flex: 1; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ============ 标注页 ============ */
+.ann-list { display: flex; flex-direction: column; max-height: 420px; overflow-y: auto; gap: 4px; }
+.ann-row {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: 4px; border-bottom: 1px solid var(--border);
+}
+.ann-meta { width: 190px; flex-shrink: 0; color: var(--text-dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ann-input {
+  flex: 1; min-width: 0;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: var(--font); font-size: var(--fs-dim); padding: 4px 8px;
+}
+.ann-input:focus { outline: none; border-color: var(--primary); }
