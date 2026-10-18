@@ -38,7 +38,9 @@ def is_engine_up(timeout: float = 2.0) -> bool:
 def synthesize(text: str, text_lang: str, ref_audio_path: str,
                prompt_lang: Optional[str] = None, prompt_text: str = "",
                speed_factor: float = 1.0,
-               seed: int = -1, temperature: float = 1.0, top_k: int = 15) -> bytes:
+               seed: int = -1, temperature: float = 0.8, top_k: int = 10,
+               repetition_penalty: float = 1.2,
+               aux_ref_audio_paths: Optional[list] = None) -> bytes:
     """
     调引擎合成一段语音，返回 wav 字节。
 
@@ -49,9 +51,11 @@ def synthesize(text: str, text_lang: str, ref_audio_path: str,
         prompt_lang: 参考音频的语言（留空就用 text_lang）
         prompt_text: 参考音频的文本（可留空）
         speed_factor: 语速，1.0 正常
-        seed: -1 随机；固定数字则结果可复现（重试换一个数字即可换结果）
-        temperature: 采样温度，越低越稳（0.7~1.0 常用）
-        top_k: 采样范围，越小越稳
+        seed: -1 随机；固定数字则结果可复现
+        temperature: 采样温度，越低越稳（默认 0.8，比 1.0 稳很多）
+        top_k: 采样范围，越小越稳（默认 10）
+        repetition_penalty: 重复惩罚，防念重复/卡壳（默认 1.2）
+        aux_ref_audio_paths: 额外的参考音频，用来融合音色（多段平均更稳）
 
     返回:
         wav 文件字节
@@ -70,10 +74,13 @@ def synthesize(text: str, text_lang: str, ref_audio_path: str,
         "speed_factor": speed_factor,
         "fragment_interval": 0.3,
         "seed": int(seed),
+        "repetition_penalty": float(repetition_penalty),
         "media_type": "wav",
         "streaming_mode": 0,
         "parallel_infer": True,
     }
+    if aux_ref_audio_paths:
+        payload["aux_ref_audio_paths"] = list(aux_ref_audio_paths)
 
     try:
         r = requests.post(f"{ENGINE_URL}/tts", json=payload, timeout=600)

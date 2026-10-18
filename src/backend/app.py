@@ -95,8 +95,10 @@ class SynthesizeRequest(BaseModel):
     tone: str = "自动"                  # 平静|开心|悲伤|生气|惊讶|害怕|自动
     speed: float = 1.0
     seed: int = -1                      # -1 随机；指定数字则结果可复现
-    temperature: float = 1.0            # 越低越稳（0.7~1.0 常用）
-    top_k: int = 15
+    temperature: float = 0.8            # 越低越稳（默认 0.8，比 1.0 稳）
+    top_k: int = 10                     # 采样范围，越小越稳
+    repetition_penalty: float = 1.2     # 防念重复/卡壳
+    use_aux_ref: bool = False           # 多参考融合实测会拉偏音色，默认关
 
 
 # ---------- 工具 ----------
@@ -200,6 +202,27 @@ def ref_prompt_text(voice: str) -> str:
     except Exception:
         pass
     return ""
+
+
+def aux_refs() -> list:
+    """
+    辅助参考音频（多段融合音色）。
+    GPT-SoVITS 支持传多条参考音频，音色取平均，比单条更稳、更不容易偏。
+    """
+    out = []
+    aux_dir = REF_DIR / "aux"
+    try:
+        meta = aux_dir / "aux_refs.json"
+        if meta.exists():
+            for item in json.loads(meta.read_text(encoding="utf-8")):
+                p = aux_dir / item["file"]
+                if p.exists():
+                    out.append(str(p))
+        elif aux_dir.exists():
+            out = [str(p) for p in sorted(aux_dir.glob("*.wav"))]
+    except Exception:
+        pass
+    return out[:4]
 
 
 def merge_wavs(wav_bytes_list: list) -> bytes:
@@ -385,6 +408,8 @@ def synthesize_text(req: SynthesizeRequest):
                 seed=req.seed,
                 temperature=req.temperature,
                 top_k=req.top_k,
+                repetition_penalty=req.repetition_penalty,
+                aux_ref_audio_paths=aux_refs() if req.use_aux_ref else None,
             )
         except EngineError as e:
             # 半路失败：把已经生成的段清掉，报人话
@@ -635,6 +660,9 @@ def _eval_one_sentence(text: str, lang: str, ref_path: str) -> dict:
         prompt_lang="ja",
         prompt_text=ref_prompt_text(ref_path),
         speed_factor=1.0,
+        temperature=0.8,
+        top_k=10,
+        repetition_penalty=1.2,
     )
     return wav_bytes
 
