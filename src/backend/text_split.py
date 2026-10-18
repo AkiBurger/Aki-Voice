@@ -1,110 +1,187 @@
 # -*- coding: utf-8 -*-
 """
-长文本切句工具。
+文本分句 / 分块（给 TTS 用）。
 
-目标：把一段长文案切成适合合成的小句。
-- 每句尽量不超过 max_chars 字（默认 50）
-- 中文按标点切，日文优先按「。」，英文按句号/问号/感叹号
-- 切完保留标点（停顿感靠它）
+为什么要专门做：
+- 旧版按标点正则硬切，会把「引号」和「……省略号」切成碎片，
+  合成出来会出现单独一个"…。"的怪段落。
+- 目标不是"切得最碎"，而是切出适合朗读的句子块：
+  · 一句 8~45 字（太短没上下文，太长模型容易崩）
+  · 不切在引号中间
+  · 不切出孤立的标点
+  · 太短的相邻句合并，太长的在逗号处再切
 
-约定：
-- 整句数少于 min_sentences 时，把句子合并回长文本交给引擎
-  （GPT-SoVITS 自己也有 text_split_method，短文本整段传效果更自然）
+实现：
+1. 主用 pysbd（纯 Python 规则库，支持中/日/英，能处理引号和省略号）
+2. pysbd 不可用时退回正则（并做同样的后处理）
+3. 后处理：合并过短段、切分过长段、清理孤立标点
 """
 import re
 
-# 中文句子结束标点（含全角半角）
-_CN_END = r"[。！？!?；;]"
-# 日文句子结束标点
-_JA_END = r"[。！？!?…]"
-# 英文句子结束标点（排除小数点 3.14、缩写 e.g.）
-_EN_END = r"(?<!\d)[.!?](?!\d)"
+try:
+    import pysbd
+    _HAS_PYSBD = True
+except Exception:  # pragma: no cover
+    _HAS_PYSBD = False
 
-# 默认切分上限（字符数）
-DEFAULT_MAX_CHARS = 50
-# 少于这个句子数就不切了，整段交给引擎
-MIN_SENTENCES = 2
+# 每块的目标上限（字）
+DEFAULT_MAX_CHARS = 45
+# 低于这个长度的段会被尝试合并
+MIN_CHARS = 8
+
+# 语言映射 → pysbd 语言代码
+_PYSBD_LANG = {"zh": "zh", "ja": "ja", "en": "en"}
+
+# 句末标点（正则兜底用）
+_END_PUNCT = r"[。！？!?；;]"
+# 引号对
+_QUOTES = [("「", "」"), ("『", "』"), ("（", "）"), ("(", ")"), ("“", "”"), ('"', '"')]
+# 孤立标点（整段只有标点/省略号）
+_ONLY_PUNCT = re.compile(r"^[。、，．.…！？!?～〜ー\-—\s]+$")
 
 
-def split_sentences(text: str, lang: str, max_chars: int = DEFAULT_MAX_CHARS):
+def _segment_by_pysbd(text: str, lang: str) -> list:
+    """用 pysbd 切句。"""
+    code = _PYSBD_LANG.get(lang, "zh")
+    try:
+        seg = pysbd.Segmenter(language=code, clean=False)
+        parts = seg.segment(text)
+        return [p.strip() for p in parts if p and p.strip()]
+    except Exception:
+        return []
+
+
+def _segment_by_regex(text: str) -> list:
+    """正则兜底：按句末标点切，标点留在句尾。"""
+    parts, start = [], 0
+    for m in re.finditer(_END_PUNCT, text):
+        parts.append(text[start:m.end()])
+        start = m.end()
+    if text[start:].strip():
+        parts.append(text[start:])
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _unbalanced_quotes(s: str) -> bool:
+    """检查句子里的引号是否配平（不配平说明切在引号中间了）。"""
+    for left, right in _QUOTES:
+        if left == right:
+            if s.count(left) % 2 != 0:
+                return True
+        elif s.count(left) != s.count(right):
+            return True
+    return False
+
+
+def _fix_quote_splits(parts: list) -> list:
+    """把切在引号中间的相邻段合并回去。"""
+    out = []
+    for p in parts:
+        if out and _unbalanced_quotes(out[-1]):
+            out[-1] = out[-1] + p
+        else:
+            out.append(p)
+    # 最后一段仍不配平：并回前一段
+    while len(out) > 1 and _unbalanced_quotes(out[-1]):
+        out[-2] = out[-2] + out.pop()
+    return out
+
+
+def _split_long(s: str, max_chars: int) -> list:
+    """超长句在逗号/顿号处再切一刀。"""
+    if len(s) <= max_chars:
+        return [s]
+    marks = [m.start() for m in re.finditer(r"[、，,；;：:]", s)]
+    if not marks:
+        return [s[i:i + max_chars] for i in range(0, len(s), max_chars)]
+    pieces, start = [], 0
+    for pos in marks:
+        if pos + 1 - start >= max_chars * 0.6:      # 够长就切（尽量均分）
+            pieces.append(s[start:pos + 1])
+            start = pos + 1
+    if start < len(s):
+        pieces.append(s[start:])
+    out = []
+    for p in pieces:
+        if len(p) > max_chars:
+            out.extend([p[i:i + max_chars] for i in range(0, len(p), max_chars)])
+        else:
+            out.append(p)
+    return [p for p in out if p.strip()]
+
+
+def _merge_short(parts: list, min_chars: int = MIN_CHARS) -> list:
+    """过短的段并到相邻段（优先并到前一句）。"""
+    out = []
+    for p in parts:
+        if out and len(p) < min_chars:
+            out[-1] = out[-1] + p
+        elif out and len(out[-1]) < min_chars:
+            out[-1] = out[-1] + p
+        else:
+            out.append(p)
+    return out
+
+
+def _drop_orphan_punct(parts: list) -> list:
+    """丢掉只有一个标点的段，并到前一段。"""
+    out = []
+    for p in parts:
+        if _ONLY_PUNCT.match(p):
+            if out:
+                out[-1] = out[-1] + p
+            continue
+        out.append(p)
+    return out
+
+
+def split_sentences(text: str, lang: str = "ja", max_chars: int = DEFAULT_MAX_CHARS) -> list:
     """
-    把长文本切成小句列表。
+    把文本切成适合 TTS 的句子块。
 
     参数:
-        text: 原文
-        lang: "zh" | "ja" | "en" | "auto"
-        max_chars: 单句上限，超过会在逗号处继续切
+        text: 原文（应该是最终要朗读的语言）
+        lang: "zh" | "ja" | "en"
+        max_chars: 每块上限字数
 
     返回:
-        list[str]，每句都是非空字符串
+        list[str]
     """
     text = (text or "").strip()
     if not text:
         return []
 
-    if lang == "ja":
-        sentences = _split_by_punct(text, _JA_END)
-    elif lang == "en":
-        sentences = _split_by_punct(text, _EN_END)
-    else:
-        # 中文与 auto 走同一套标点
-        sentences = _split_by_punct(text, _CN_END)
+    # 1. 切句
+    parts = _segment_by_pysbd(text, lang) if _HAS_PYSBD else []
+    if not parts:
+        parts = _segment_by_regex(text)
 
-    # 句数太少，交给引擎自己处理
-    if len(sentences) < MIN_SENTENCES:
-        return [text]
+    # 2. 修正引号被切断
+    parts = _fix_quote_splits(parts)
+    # 3. 丢掉孤立标点
+    parts = _drop_orphan_punct(parts)
+    # 4. 过短合并
+    parts = _merge_short(parts)
+    # 5. 过长再切
+    out = []
+    for p in parts:
+        out.extend(_split_long(p, max_chars))
+    # 6. 再合并一次
+    out = _merge_short(out)
 
-    # 单句超长，按逗号/顿号再切一刀
-    result = []
-    for s in sentences:
-        if len(s) > max_chars:
-            result.extend(_split_by_punct(s, r"[，,、\s]+", keep=True))
-        else:
-            result.append(s)
-    return [s for s in result if s.strip()]
-
-
-def _split_by_punct(text: str, pattern: str, keep: bool = True):
-    """
-    按标点切句。
-
-    keep=True 时把标点留在句尾（"你好。再见。" -> ["你好。","再见。"]）
-    keep=False 时标点单独成段，用于合并
-    """
-    if not keep:
-        parts = re.split(f"({pattern})", text)
-        sentences = []
-        for i in range(0, len(parts), 2):
-            chunk = parts[i]
-            if i + 1 < len(parts):
-                chunk += parts[i + 1]
-            if chunk.strip():
-                sentences.append(chunk)
-        return sentences
-
-    # 用正向后顾做“切而不丢”：
-    # 找到所有结束标点位置，在标点之后切开
-    matches = list(re.finditer(pattern, text))
-    if not matches:
-        return [text]
-    sentences = []
-    start = 0
-    for m in matches:
-        end = m.end()
-        sentences.append(text[start:end])
-        start = end
-    tail = text[start:]
-    if tail.strip():
-        sentences.append(tail)
-    return [s for s in sentences if s.strip()]
+    return [p for p in out if p.strip()]
 
 
 def estimate_seconds(text: str, chars_per_sec: float = 4.5) -> float:
     """粗估朗读秒数。中文/日文约 4.5 字每秒，英文按词算。"""
     if not text:
         return 0.0
-    # 英文按词
     if re.match(r"^[\x20-\x7E]+$", text) and " " in text:
         words = len(text.split())
-        return round(words / 2.2, 1)  # 约 2.2 词/秒
+        return round(words / 2.2, 1)
     return round(len(text) / chars_per_sec, 1)
+
+
+def split_method_name() -> str:
+    """当前用的哪个分句引擎（给界面显示用）。"""
+    return "pysbd" if _HAS_PYSBD else "regex"
