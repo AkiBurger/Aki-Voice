@@ -714,12 +714,13 @@
   let dataJobTimer = null;
 
   async function updateDataStatus() {
-    if (!els.dataBadge) return;
     try {
       const d = await api('/api/data/status');
       const ready = d.clean_count > 0;
-      els.dataBadge.textContent = ready ? `就绪 ${d.clean_count} 条` : (d.wav_count > 0 ? `仅导入 ${d.wav_count} 段` : '未导入');
-      els.dataBadge.className = 'badge ' + (ready ? 'badge-ok' : 'badge-warn');
+      if (els.dataBadge) {
+        els.dataBadge.textContent = ready ? `就绪 ${d.clean_count} 条` : (d.wav_count > 0 ? `仅导入 ${d.wav_count} 段` : '未导入');
+        els.dataBadge.className = 'badge ' + (ready ? 'badge-ok' : 'badge-warn');
+      }
       if (els.prepareBtn) els.prepareBtn.disabled = d.wav_count === 0;
       if (els.trainStartBtn) els.trainStartBtn.disabled = !ready || !state.engineUp;
       if (els.scanResult) {
