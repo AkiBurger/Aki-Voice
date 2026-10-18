@@ -30,7 +30,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from engine import EngineError, is_engine_up, synthesize
+from engine import EngineError, is_engine_up, set_models, synthesize
 from emotion import judge_tone, TONES
 from text_split import estimate_seconds, split_sentences
 from translate import TranslateError, is_translator_up, translate, translate_with_engine
@@ -63,6 +63,13 @@ HOST = "127.0.0.1"
 PORT = 8017
 
 app = FastAPI(title="AkiBurger Voice")
+
+
+@app.get("/", include_in_schema=False)
+def root_redirect():
+    """直接访问 127.0.0.1:8017 时跳到前端页面。"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/static/index.html")
 
 
 # ---------- 禁止前端被浏览器缓存 ----------
@@ -162,7 +169,7 @@ def list_models() -> list:
     """
     custom = load_model_names()
     models = []
-    if SOVITS_WEIGHTS_DIR.exists():
+    if SOVITS_WEIGHTS_DIR is not None and SOVITS_WEIGHTS_DIR.exists():
         for f in sorted(SOVITS_WEIGHTS_DIR.glob("*.pth")):
             m = re.search(r"_e(\d+)_", f.name)
             if not m:
@@ -181,17 +188,76 @@ def list_models() -> list:
     return models
 
 
-def find_ref_file(voice: str, tone: str) -> str:
-    """找到这次合成该用的参考音频绝对路径。voice 可以是文件名，也可以是模型 id（如 e2）。"""
+def _inside_ref_dir(p: Path) -> bool:
+    """路径是否真的在 data/ref 里面（防路径穿越）。"""
+    try:
+        rp = p.resolve()
+        return REF_DIR.resolve() in rp.parents
+    except Exception:
+        return False
+
+
+def _pick_gpt_file(epoch: int):
+    """挑和这个轮次匹配的 GPT 权重；没有就取最新的。"""
+    if GPT_WEIGHTS_DIR is None or not GPT_WEIGHTS_DIR.exists():
+        return None
+    files = list(GPT_WEIGHTS_DIR.glob("*.ckpt"))
+    if not files:
+        return None
+    for f in files:
+        if f"-e{epoch}" in f.name or f"_e{epoch}" in f.name:
+            return f.name
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return files[0].name
+
+
+def switch_model_if_needed(voice: str) -> None:
+    """
+    如果界面选的是某个模型（如 e2），把引擎权重切过去。
+    P1 修复：之前选模型只是换个下拉框，引擎权重从来没变。
+    """
+    if not voice:
+        return
+    m = None
+    for item in list_models():
+        if voice in (item["id"], item["name"], item["file"]):
+            m = item
+            break
+    if m is None:
+        return
+    try:
+        set_models(f"SoVITS_weights_v2Pro/{m['file']}", f"GPT_weights_v2Pro/{_pick_gpt_file(m['epoch'])}"
+                   if _pick_gpt_file(m["epoch"]) else "")
+    except EngineError:
+        pass      # 切权重失败不阻断合成，继续用当前权重
+
+
+def find_ref_file(voice: str, tone: str = "") -> str:
+    """
+    找到这次合成该用的参考音频绝对路径。
+
+    安全约束（P0 修复）：
+    - 只允许 data/ref 目录下的 wav
+    - voice 可以是文件名（setsuna_1006_0429_02）或模型 id（e2，走默认参考音频）
+    - **禁止**任意本地路径（之前 /api/preview?voice=D:\\xxx 能读任意文件）
+    """
     if voice:
-        p = REF_DIR / f"{voice}.wav"
-        if p.exists():
+        # 1) 按文件名找（去掉可能的目录部分，不用用户给的路径本身）
+        p = REF_DIR / f"{Path(voice).name}.wav"
+        if p.exists() and _inside_ref_dir(p):
             return str(p)
-        if Path(voice).exists():
-            return str(voice)
+
+        # 2) 内部调用会传绝对路径：只接受 data/ref 里的 wav
+        try:
+            cand = Path(voice)
+            if cand.is_absolute() and cand.suffix.lower() == ".wav" and cand.exists() and _inside_ref_dir(cand):
+                return str(cand.resolve())
+        except Exception:
+            pass
+
     # 兜底：用默认参考音频（界面上只选模型，不选参考音频）
     ref = default_ref_file()
-    if ref is not None:
+    if ref is not None and _inside_ref_dir(ref):
         return str(ref)
     raise HTTPException(status_code=404, detail="找不到参考音频，请把 wav 放进 data/ref/")
 
@@ -259,6 +325,20 @@ def health():
         "engine_up": is_engine_up(),
         "translator_up": is_translator_up(),
     }
+
+
+class ToneRequest(BaseModel):
+    text: str
+    lang: str = "ja"
+
+
+@app.post("/api/tone")
+def judge_tone_api(req: ToneRequest):
+    """判断文本语气（前端输入停顿后调用，之前 404）。"""
+    try:
+        return judge_tone(req.text or "", req.lang if req.lang in ("ja", "zh", "en") else "ja")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)[:100])
 
 
 @app.get("/api/models")
@@ -330,14 +410,21 @@ def voices():
 
 @app.get("/api/preview")
 def preview(voice: str):
-    """试听参考音频：voice 是文件名（如 setsuna_03）或完整路径，返回 wav 流。"""
+    """试听参考音频：只允许 data/ref 下登记的 wav（P0 修复：不再能读任意文件）。"""
+    # 严格模式：给了 voice 就必须能找到（模型 id 会映射到默认参考音频），不静默回退
+    if voice:
+        cand = REF_DIR / f"{Path(voice).name}.wav"
+        is_model = any(m["id"] == voice or m["name"] == voice for m in list_models())
+        if not ((cand.exists() and _inside_ref_dir(cand)) or is_model):
+            raise HTTPException(status_code=404, detail=f"找不到参考音频：{voice}")
     try:
         ref_path = find_ref_file(voice, "")
     except HTTPException:
         raise HTTPException(status_code=404, detail=f"找不到参考音频：{voice}")
-    if not Path(ref_path).exists():
+    p = Path(ref_path)
+    if not p.exists() or not _inside_ref_dir(p):
         raise HTTPException(status_code=404, detail="参考音频不存在")
-    return FileResponse(ref_path, media_type="audio/wav")
+    return FileResponse(str(p), media_type="audio/wav")
 
 
 @app.post("/api/synthesize")
@@ -409,7 +496,7 @@ def synthesize_text(req: SynthesizeRequest):
             text=text,
             text_lang=lang,
             ref_audio_path=ref_path,
-            prompt_lang=lang,
+            prompt_lang="ja",      # 参考音频/参考文本始终是日语（P1 修复）
             prompt_text=ref_prompt_text(ref_path),
             speed_factor=req.speed,
             seed=req.seed,
@@ -536,14 +623,21 @@ def delete_history_item(stamp: str):
 
 @app.delete("/api/history")
 def clear_history():
-    """清空全部合成历史。"""
+    """
+    清空合成历史。
+    P1 修复：只删带 meta.json 的真正合成记录，不碰 outputs/_eval（评测音频）、
+    _compare（对比样本）等非合成目录。
+    """
     count = 0
     if OUTPUT_DIR.exists():
         for job_dir in list(OUTPUT_DIR.iterdir()):
-            if job_dir.is_dir():
-                shutil.rmtree(job_dir, ignore_errors=True)
-                if not job_dir.exists():
-                    count += 1
+            if not job_dir.is_dir():
+                continue
+            if not (job_dir / "meta.json").exists():
+                continue          # 不是合成记录，跳过
+            shutil.rmtree(job_dir, ignore_errors=True)
+            if not job_dir.exists():
+                count += 1
     return {"ok": True, "deleted_count": count}
 
 
@@ -606,9 +700,9 @@ def material_trash():
 
 @app.get("/api/material/audio")
 def material_audio(name: str):
-    """试听已导入的素材（直接流式返回 wav）。"""
+    """试听已导入的素材（只允许 wav 目录下的 .wav 文件）。"""
     p = data_prep.WAV_DIR / Path(name).name
-    if not p.exists():
+    if p.suffix.lower() != ".wav" or not p.is_file():
         raise HTTPException(status_code=404, detail="找不到这个音频")
     return FileResponse(str(p), media_type="audio/wav")
 
@@ -618,6 +712,8 @@ def material_delete(req: MaterialDeleteRequest):
     """删除素材（按名字或全部）。"""
     try:
         return data_prep.delete_materials(req.name, req.all)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

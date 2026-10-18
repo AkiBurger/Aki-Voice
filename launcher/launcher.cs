@@ -309,7 +309,8 @@ namespace AkiBurgerVoice
                 if (!Directory.Exists(dir)) return null;
                 var files = Directory.GetFiles(dir, pattern);
                 if (files.Length == 0) return null;
-                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                // P1 修复：按修改时间取最新（文件名排序会把 e2 排在 e4/e6 前面，训练成果被回退）
+                Array.Sort(files, (a, b) => File.GetLastWriteTime(b).CompareTo(File.GetLastWriteTime(a)));
                 return Path.GetFileName(files[0]);
             }
             catch { return null; }

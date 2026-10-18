@@ -20,14 +20,27 @@ from pathlib import Path
 import numpy as np
 import torch
 
-SOVITS_ROOT = None
-for _d in Path(r"D:\Dev\ai").glob("02_GPT-SoVITS_*"):
-    if (_d / "GPT-SoVITS" / "api_v2.py").exists():
-        SOVITS_ROOT = _d / "GPT-SoVITS"
-        break
+# 找 GPT-SoVITS 根目录：环境变量优先，其次自动探测（P1 修复：找不到时不再崩在 import 阶段）
+import os as _os
 
-SV_CKPT = SOVITS_ROOT / "GPT_SoVITS" / "pretrained_models" / "sv" / "pretrained_eres2netv2w24s4ep4.ckpt"
-ERES_DIR = SOVITS_ROOT / "GPT_SoVITS" / "eres2net"
+SOVITS_ROOT = None
+_env_root = _os.environ.get("ABV_SOVITS_ROOT", "").strip()
+if _env_root:
+    _p = Path(_env_root)
+    if (_p / "GPT_SoVITS" / "api_v2.py").exists():
+        SOVITS_ROOT = _p
+if SOVITS_ROOT is None:
+    for _d in Path(r"D:\Dev\ai").glob("02_GPT-SoVITS_*"):
+        if (_d / "GPT-SoVITS" / "api_v2.py").exists():
+            SOVITS_ROOT = _d / "GPT-SoVITS"
+            break
+
+if SOVITS_ROOT is not None:
+    SV_CKPT = SOVITS_ROOT / "GPT_SoVITS" / "pretrained_models" / "sv" / "pretrained_eres2netv2w24s4ep4.ckpt"
+    ERES_DIR = SOVITS_ROOT / "GPT_SoVITS" / "eres2net"
+else:
+    SV_CKPT = None
+    ERES_DIR = None
 
 # 分数分档（实测后可以再调）
 LEVELS = [
@@ -48,6 +61,8 @@ def _load_model():
     with _lock:
         if _state["model"] is not None:
             return
+        if SOVITS_ROOT is None or SV_CKPT is None:
+            raise RuntimeError("找不到 GPT-SoVITS 安装目录，无法加载声纹模型（请设置环境变量 ABV_SOVITS_ROOT）")
         if str(ERES_DIR) not in sys.path:
             sys.path.insert(0, str(ERES_DIR))
         from ERes2NetV2 import ERes2NetV2  # noqa
@@ -112,4 +127,4 @@ def cosine(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def is_available() -> bool:
-    return SV_CKPT.exists()
+    return SV_CKPT is not None and SV_CKPT.exists()

@@ -7,6 +7,8 @@
 改完的文本直接写回文件，训练时用到的就是改后的版本。
 """
 import json
+import os
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +17,7 @@ DATA_DIR = PROJECT_ROOT / "data" / "setsuna"
 WAV_DIR = DATA_DIR / "wav"
 LIST_FILE = DATA_DIR / "setsuna_clean.list"
 BACKUP_DIR = DATA_DIR / "list_backups"
+_file_lock = threading.Lock()
 
 
 def _parse_line(line: str):
@@ -63,33 +66,40 @@ def save_text(wav_path: str, text: str) -> dict:
     text = (text or "").strip()
     if not LIST_FILE.exists():
         raise FileNotFoundError("还没有标注文件")
+    # P2 修复：竖线和换行都会破坏 .list 的单行格式
     if "|" in text:
         raise ValueError("文本里不能有 | 符号")
+    if "\n" in text or "\r" in text:
+        raise ValueError("文本里不能有换行")
 
-    lines = LIST_FILE.read_text(encoding="utf-8").splitlines()
-    hit = False
-    out = []
-    for line in lines:
-        item = _parse_line(line)
-        if item and item["wav"] == wav_path:
-            out.append(f"{item['wav']}|{item['spk']}|{item['lang']}|{text}")
-            hit = True
-        else:
-            out.append(line)
-    if not hit:
-        raise KeyError("找不到这条标注")
+    with _file_lock:
+        lines = LIST_FILE.read_text(encoding="utf-8").splitlines()
+        hit = False
+        out = []
+        for line in lines:
+            item = _parse_line(line)
+            if item and item["wav"] == wav_path:
+                out.append(f"{item['wav']}|{item['spk']}|{item['lang']}|{text}")
+                hit = True
+            else:
+                out.append(line)
+        if not hit:
+            raise KeyError("找不到这条标注")
 
-    # 备份一次，改坏了能找回
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    (BACKUP_DIR / f"setsuna_clean_{stamp}.list").write_text(
-        LIST_FILE.read_text(encoding="utf-8"), encoding="utf-8")
-    # 只保留最近 10 份备份
-    backups = sorted(BACKUP_DIR.glob("*.list"))
-    for old in backups[:-10]:
-        old.unlink(missing_ok=True)
+        # 备份一次，改坏了能找回
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        (BACKUP_DIR / f"setsuna_clean_{stamp}.list").write_text(
+            LIST_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+        # 只保留最近 10 份备份
+        backups = sorted(BACKUP_DIR.glob("*.list"))
+        for old in backups[:-10]:
+            old.unlink(missing_ok=True)
 
-    LIST_FILE.write_text("\n".join(out), encoding="utf-8")
+        # P2 修复：先写临时文件再原子替换，中途崩溃不会截断整个标注
+        tmp = LIST_FILE.with_name(LIST_FILE.name + ".tmp")
+        tmp.write_text("\n".join(out), encoding="utf-8")
+        os.replace(tmp, LIST_FILE)
     return {"ok": True, "wav": wav_path, "text": text}
 
 

@@ -165,6 +165,18 @@ def start_prepare() -> dict:
         env["PYTHONIOENCODING"] = "utf-8"
         env["PYTHONUNBUFFERED"] = "1"
         env["PATH"] = r"D:\Dev\tools\ffmpeg\bin;" + env.get("PATH", "")
+        list_file = DATA_DIR / "setsuna.list"
+        clean_file = DATA_DIR / "setsuna_clean.list"
+        old_clean = _read_list(clean_file)      # 用户可能改过的标注
+        old_raw = _read_list(list_file)         # 上一轮 ASR 原文（判断哪些是用户手改的）
+        # 先备份（P0 修复：识别会全量重写，先留退路）
+        backup_dir = DATA_DIR / "list_backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        for f in (list_file, clean_file):
+            if f.exists():
+                shutil.copy2(f, backup_dir / f"{f.stem}_{stamp}.list")
+        _say(f"已备份原有标注到 data/setsuna/list_backups/{stamp}")
         try:
             # 1. ASR
             p = subprocess.Popen([py, "-u", str(ASR_SCRIPT)], cwd=str(PROJECT_ROOT),
@@ -196,9 +208,14 @@ def start_prepare() -> dict:
             if p2.returncode != 0:
                 raise RuntimeError("清洗失败，详见日志")
 
+            # 3. 合并：保住用户手改过的文本（P0 修复）
+            kept = _merge_manual_edits(clean_file, old_clean, old_raw)
+            if kept:
+                _say(f"已保留 {kept} 条你手动改过的标注")
+
             with _lock:
                 _state["running"] = False
-                _state["message"] = "识别与清洗完成，可以开始训练了"
+                _state["message"] = f"识别与清洗完成（保留手改标注 {kept} 条），可以开始训练了"
                 _state["finished_at"] = datetime.now().isoformat(timespec="seconds")
             _say(_state["message"])
         except Exception as e:
@@ -273,7 +290,26 @@ def delete_materials(name: str = "", delete_all: bool = False) -> dict:
     trash = TRASH_DIR / f"material_{stamp}"
     trash.mkdir(parents=True, exist_ok=True)
 
-    targets = wavs if delete_all else [WAV_DIR / name]
+    def _safe_target(name_: str) -> Path:
+        """只允许删除 wav 目录下的 .wav 文件（P0 修复：防路径穿越/搬走整目录）"""
+        if not name_:
+            raise ValueError("要删哪个？")
+        raw = str(name_).strip().replace("\\", "/")
+        if "/" in raw or raw in (".", "..") or raw.startswith("../"):
+            raise ValueError("文件名不合法")
+        cand = (WAV_DIR / raw)
+        try:
+            if WAV_DIR.resolve() != cand.resolve().parent:
+                raise ValueError("文件名不合法")
+        except Exception:
+            raise ValueError("文件名不合法")
+        if cand.suffix.lower() != ".wav":
+            raise ValueError("只能删 .wav 素材")
+        if not cand.is_file():
+            raise FileNotFoundError(f"找不到文件：{name_}")
+        return cand
+
+    targets = wavs if delete_all else [_safe_target(name)]
     removed = 0
     for w in targets:
         if not w.exists():
@@ -336,3 +372,44 @@ def restore_materials(batch: str = "") -> dict:
     except Exception:
         pass
     return {"ok": True, "restored": restored, "remain": len(list(WAV_DIR.glob("*.wav")))}
+
+def _read_list(path):
+    """读 .list 文件 → {wav 路径: 文本}"""
+    out = {}
+    try:
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                parts = line.split("|")
+                if len(parts) == 4:
+                    out[parts[0]] = parts[3]
+    except Exception:
+        pass
+    return out
+
+
+def _merge_manual_edits(clean_file, old_clean, old_raw):
+    """
+    识别清洗后，把用户手动改过的标注合并回来。
+    判断标准：旧 clean 文本 != 旧 ASR 原文 → 说明是用户改过的，保留。
+    返回保留下来的条数。
+    """
+    if not clean_file.exists():
+        return 0
+    lines = clean_file.read_text(encoding="utf-8").splitlines()
+    out, kept = [], 0
+    for line in lines:
+        parts = line.split("|")
+        if len(parts) != 4:
+            out.append(line)
+            continue
+        wav, spk, lang, text = parts
+        manual = old_clean.get(wav)
+        if manual and old_raw.get(wav) is not None and manual != old_raw.get(wav):
+            if manual != text:
+                kept += 1
+            out.append(f"{wav}|{spk}|{lang}|{manual}")
+        else:
+            out.append(line)
+    if kept:
+        clean_file.write_text("\n".join(out), encoding="utf-8")
+    return kept

@@ -26,6 +26,36 @@ class EngineError(Exception):
     """引擎出问题时抛这个，message 是人话，直接能给用户看。"""
 
 
+# 当前已挂载的权重（用于避免每次合成都重新加载）
+_attached = {"sovits": None, "gpt": None}
+
+
+def set_models(sovits_file: str = "", gpt_file: str = "") -> None:
+    """
+    切换引擎当前使用的权重（P1 修复：界面选模型要真的生效）。
+    文件名相对 GPT-SoVITS 根目录，如 "SoVITS_weights_v2Pro/xxx.pth"。
+    已挂载过的会跳过，避免重复加载。
+    """
+    if sovits_file and _attached["sovits"] != sovits_file:
+        try:
+            r = requests.get(f"{ENGINE_URL}/set_sovits_weights",
+                             params={"weights_path": sovits_file}, timeout=180)
+            if r.status_code != 200:
+                raise EngineError(f"切换音色权重失败：HTTP {r.status_code}")
+            _attached["sovits"] = sovits_file
+        except requests.exceptions.RequestException as e:
+            raise EngineError(f"切换音色权重失败：{e}")
+    if gpt_file and _attached["gpt"] != gpt_file:
+        try:
+            r = requests.get(f"{ENGINE_URL}/set_gpt_weights",
+                             params={"weights_path": gpt_file}, timeout=180)
+            if r.status_code != 200:
+                raise EngineError(f"切换韵律权重失败：HTTP {r.status_code}")
+            _attached["gpt"] = gpt_file
+        except requests.exceptions.RequestException as e:
+            raise EngineError(f"切换韵律权重失败：{e}")
+
+
 def is_engine_up(timeout: float = 2.0) -> bool:
     """引擎进程活着吗（/docs 是 FastAPI 自带页面，通了就算活着）。"""
     try:
@@ -92,7 +122,12 @@ def synthesize(text: str, text_lang: str, ref_audio_path: str,
         raise EngineError("合成超时了。这段可能太长，试着切成短句再试")
 
     if r.status_code == 200:
-        return r.content
+        # P2 修复：校验真的是 wav，别把空响应/HTML 错误页存成音频
+        body = r.content or b""
+        if len(body) < 44 or not (body[:4] == b"RIFF" and body[8:12] == b"WAVE"):
+            ct = r.headers.get("Content-Type", "?")
+            raise EngineError(f"引擎返回的不是音频（{len(body)} 字节, {ct}），请重启引擎再试")
+        return body
 
     # 引擎返回的错误一般是 JSON
     try:

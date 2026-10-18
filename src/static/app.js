@@ -261,7 +261,8 @@
       }
       for (const v of state.voices) {
         const opt = document.createElement('option');
-        opt.value = v.path || v.name || '';
+        // 模型条目用模型 id 作为 value（后端据此切换权重）；零样本才用参考音频路径
+        opt.value = v.char === 'model' ? (v.name || v.path || '') : (v.path || v.name || '');
         opt.textContent = v.display || v.label || v.name || '未命名';
         if (v.file) opt.dataset.file = v.file;
         els.voiceSelect.appendChild(opt);
@@ -270,7 +271,7 @@
       if (els.renameModelBtn) els.renameModelBtn.disabled = false;
       // 记忆上次选择
       const last = localStorage.getItem('abv:voice');
-      if (last && state.voices.some((v) => (v.path || v.name) === last)) {
+      if (last && state.voices.some((v) => (v.path || v.name || v.display) === last || (v.char === 'model' && v.name === last))) {
         els.voiceSelect.value = last;
       }
     } catch (e) {
@@ -364,7 +365,7 @@
         els.toneDetected.hidden = false;
         els.toneDetectedName.textContent = res.tone;
         els.toneDetectedConf.textContent = '置信度 ' + (res.confidence || '一般');
-        if (state.tone === 'auto') setTone(res.tone);
+        // 保留 auto 状态：只展示建议，真正判断交给后端合成时做（P2 修复）
         return;
       }
       throw new Error('no tone');
@@ -373,7 +374,7 @@
       els.toneDetected.hidden = false;
       els.toneDetectedName.textContent = g.tone;
       els.toneDetectedConf.textContent = '置信度 ' + g.confidence + '（本地规则）';
-      if (state.tone === 'auto') setTone(g.tone);
+      // 本地规则也只做展示，不改状态（P2 修复）
     }
   }
 
@@ -551,7 +552,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ batch: '' }),
       });
-      showToast(已从回收站恢复  + res.restored +  段素材);
+      showToast('已从回收站恢复 ' + res.restored + ' 段素材');
       loadMaterials();
       updateDataStatus();
     } catch (e) {
@@ -1402,7 +1403,7 @@
         const res = await api('/api/synthesize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: item.text, lang: state.lang, voice, tone: item.tone }),
+          body: JSON.stringify({ text: item.text, lang: state.lang, input_lang: state.inputLang, voice, tone: item.tone }),
         });
         if (res && res.ok && res.audio_url) {
           status.textContent = '✅';

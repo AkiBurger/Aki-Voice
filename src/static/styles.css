@@ -1118,3 +1118,6 @@ button.flow-step.future:disabled {
   min-height: 16px;
   margin: -2px 0 var(--s2);
 }
+
+/* ============ 全局 hidden 兜底（P2 修复：display:flex 会覆盖 hidden） ============ */
+[hidden] { display: none !important; }

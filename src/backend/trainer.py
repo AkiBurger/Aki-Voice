@@ -57,6 +57,7 @@ _state = {
 }
 _lines = deque(maxlen=400)
 _lock = threading.Lock()
+_start_lock = threading.Lock()      # 防止连点两次"开始训练"起两份（P1 修复）
 
 
 def _reader(proc, log_path):
@@ -207,21 +208,41 @@ def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: i
     return {"ok": True, "message": "训练已启动", "log": str(log_path)}
 
 
+def _kill_tree(pid: int) -> None:
+    """
+    杀掉整个进程树（P1 修复）。
+    train.py 会再起 s2_train / s1_train 子进程，只 terminate 父进程
+    会在 Windows 上留下占显存的孤儿进程。
+    """
+    try:
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True, timeout=30,
+        )
+    except Exception:
+        try:
+            os.kill(pid, 9)
+        except Exception:
+            pass
+
+
 def stop() -> dict:
-    """停止训练。"""
+    """停止训练（连同所有子进程一起杀）。"""
     proc = _state.get("proc")
     if not proc or not is_running():
         return {"ok": False, "message": "当前没有训练在跑"}
     try:
-        proc.terminate()
+        _state["stopped_by_user"] = True
+        _kill_tree(proc.pid)
         try:
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
-        _state["stopped_by_user"] = True
         _state["running"] = False
         _state["success"] = False
         _state["stage"] = "已停止"
+        with _lock:
+            _lines.append("[已停止] 已终止训练进程树")
         return {"ok": True, "message": "已停止训练"}
     except Exception as e:
         return {"ok": False, "message": f"停止失败：{e}"}
