@@ -38,6 +38,7 @@ from translate import TranslateError, is_translator_up, translate, translate_wit
 import evaluate as evaluator   # 声纹打分（评测用）
 import trainer                 # 训练任务管理（第三期）
 import data_prep               # 训练素材：导入/识别/清洗（第三期）
+import folder_picker             # 文件夹选择框
 import qc                      # 质检（第四期）
 import annotate                # 标注（第四期）
 
@@ -567,6 +568,15 @@ class MaterialDeleteRequest(BaseModel):
 class AnnotationSaveRequest(BaseModel):
     wav: str
     text: str
+
+
+@app.post("/api/dialog/folder")
+def dialog_folder():
+    """弹出 Windows 文件夹选择框，返回选中的路径（用户取消返回空）。"""
+    res = folder_picker.pick_folder()
+    if res.get("error"):
+        raise HTTPException(status_code=500, detail=res["error"])
+    return res
 
 
 @app.get("/api/material/list")

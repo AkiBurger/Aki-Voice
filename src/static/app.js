@@ -114,6 +114,8 @@
     dataJobBar: $('dataJobBar'),
     dataJobLog: $('dataJobLog'),
     // 素材页
+    browseBtn: $('browseBtn'),
+    browseHint: $('browseHint'),
     materialStats: $('materialStats'),
     materialList: $('materialList'),
     materialRefreshBtn: $('materialRefreshBtn'),
@@ -758,6 +760,30 @@
     el.classList.add('show');
     clearTimeout(showToast._t);
     showToast._t = setTimeout(() => el.classList.remove('show'), 1800);
+  }
+
+  async function browseFolder() {
+    if (!els.browseBtn) return;
+    const old = els.browseBtn.textContent;
+    els.browseBtn.disabled = true;
+    els.browseBtn.textContent = '等待选择…';
+    if (els.browseHint) els.browseHint.textContent = '已打开文件夹选择窗口，请在弹出的窗口里选好文件夹。';
+    try {
+      const res = await api('/api/dialog/folder', { method: 'POST' });
+      if (res && res.path) {
+        els.sourcePath.value = res.path;
+        if (els.browseHint) els.browseHint.textContent = '已选择：' + res.path;
+        await scanSource();
+      } else {
+        if (els.browseHint) els.browseHint.textContent =
+          res && res.busy ? '已经有一个选择框开着，先选完那个。' : '没有选择文件夹。';
+      }
+    } catch (e) {
+      if (els.browseHint) els.browseHint.textContent = '打开选择框失败：' + (e.message || e);
+    } finally {
+      els.browseBtn.disabled = false;
+      els.browseBtn.textContent = old;
+    }
   }
 
   async function scanSource() {
@@ -1523,6 +1549,7 @@
   if (els.evalBtn) els.evalBtn.addEventListener('click', runEvaluation);
   if (els.trainStartBtn) els.trainStartBtn.addEventListener('click', startTraining);
   if (els.scanBtn) els.scanBtn.addEventListener('click', scanSource);
+  if (els.browseBtn) els.browseBtn.addEventListener('click', browseFolder);
   if (els.importBtn) els.importBtn.addEventListener('click', importAudio);
   if (els.prepareBtn) els.prepareBtn.addEventListener('click', prepareData);
   // 素材页

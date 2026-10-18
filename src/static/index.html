@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AkiBurger Voice · 合成台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2314161a'/><text x='50' y='68' font-size='48' text-anchor='middle' fill='%234a9eff' font-family='sans-serif' font-weight='bold'>A</text></svg>">
-<link rel="stylesheet" href="styles.css?v=20261018p">
+<link rel="stylesheet" href="styles.css?v=20261018q">
 </head>
 <body>
 
@@ -258,10 +258,12 @@
       音频格式支持 ogg / wav / flac / mp3 等，导入时会自动转成训练要的 wav。
     </div>
     <div class="data-row">
+      <button type="button" id="browseBtn" class="btn-secondary btn-sm">📂 浏览…</button>
       <input id="sourcePath" class="data-input" type="text"
-             placeholder="音频文件夹路径，例如 C:\Users\123\Desktop\白2\人声\雪菜">
+             placeholder="点「浏览…」选文件夹，或直接粘贴路径，例如 C:\Users\123\Desktop\白2\人声\雪菜">
       <button type="button" id="scanBtn" class="btn-secondary btn-sm">扫描</button>
     </div>
+    <div class="data-hint" id="browseHint"></div>
     <div class="data-scan-result" id="scanResult">还没扫描。填好路径后点「扫描」看看有多少素材。</div>
     <div class="data-row">
       <label class="train-param">导入条数上限
@@ -481,6 +483,6 @@
   <span id="footEngine">引擎状态未知</span>
 </footer>
 
-<script src="app.js?v=20261018p"></script>
+<script src="app.js?v=20261018q"></script>
 </body>
 </html>

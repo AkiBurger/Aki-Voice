@@ -1110,3 +1110,11 @@ button.flow-step.future:disabled {
   font-size: var(--fs-dim);
   line-height: 1.7;
 }
+
+/* ============ 文件夹选择提示 ============ */
+.data-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+  min-height: 16px;
+  margin: -2px 0 var(--s2);
+}
