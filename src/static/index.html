@@ -34,11 +34,11 @@
   <div class="flow-step future"><span class="flow-dot">○</span>素材</div>
   <div class="flow-step future"><span class="flow-dot">○</span>质检</div>
   <div class="flow-step future"><span class="flow-dot">○</span>标注</div>
-  <div class="flow-step future"><span class="flow-dot">○</span>训练</div>
+  <div class="flow-step done"><span class="flow-dot">◉</span>训练</div>
   <div class="flow-step done"><span class="flow-dot">◉</span>评测</div>
   <div class="flow-step current"><span class="flow-dot">●</span>合成</div>
 </nav>
-<div class="flowbar-note">素材 → 质检 → 标注 → 训练 → 评测 → 合成　·　当前已开放「评测」「合成」，其余功能即将上线</div>
+<div class="flowbar-note">素材 → 质检 → 标注 → 训练 → 评测 → 合成　·　当前已开放「训练」「评测」「合成」，素材处理功能即将上线</div>
 
 <main class="workspace">
 
@@ -216,6 +216,34 @@
     <div class="notice-body">
       <div class="notice-title" id="errorTitle">合成失败</div>
       <div class="notice-desc" id="errorDesc"></div>
+    </div>
+  </section>
+
+  <!-- ===== 训练 ===== -->
+  <section class="card" id="trainSection">
+    <div class="history-head">
+      <div class="field-label" style="margin:0;border:0;padding:0;">🎬 训练</div>
+      <span id="trainBadge" class="badge badge-warn">空闲</span>
+    </div>
+    <div class="train-data" id="trainData">正在检查训练数据…</div>
+    <div class="train-params">
+      <label class="train-param">音色模型轮数
+        <input id="epochsS2" type="number" value="6" min="1" max="20">
+      </label>
+      <label class="train-param">韵律模型轮数
+        <input id="epochsS1" type="number" value="8" min="1" max="30">
+      </label>
+    </div>
+    <div class="train-note">轮数越多越像但越慢（音色模型约 2 分钟/轮）。训练期间合成会变慢。<br>训练完成后会自动挂载新权重，并建议跑一次评测。</div>
+    <div class="train-actions">
+      <button type="button" id="trainStartBtn" class="btn-secondary">开始训练</button>
+      <button type="button" id="trainStopBtn" class="btn-secondary hidden">停止训练</button>
+    </div>
+    <div id="trainProgress" class="train-progress hidden">
+      <div class="train-stage" id="trainStage">—</div>
+      <div class="progress-track"><div id="trainBar" class="progress-bar" style="width:0%"></div></div>
+      <div class="train-meta" id="trainMeta"></div>
+      <pre class="train-log" id="trainLog"></pre>
     </div>
   </section>
 

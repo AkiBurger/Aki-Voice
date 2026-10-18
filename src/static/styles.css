@@ -845,3 +845,31 @@ body {
 
 /* 流程导航：已完成的阶段 */
 .flow-step.done { color: var(--success); }
+
+/* ============ 训练 ============ */
+.train-data { color: var(--text-dim); font-size: var(--fs-dim); margin: var(--s2) 0; }
+.train-params { display: flex; gap: var(--s4); flex-wrap: wrap; margin: var(--s2) 0; }
+.train-param {
+  display: flex; align-items: center; gap: var(--s2);
+  color: var(--text-dim); font-size: var(--fs-dim);
+}
+.train-param input {
+  width: 70px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: inherit; font-size: var(--fs-dim); padding: 3px 8px;
+}
+.train-note { color: var(--text-dim); font-size: 12px; line-height: 1.7; margin: var(--s2) 0; }
+.train-actions { display: flex; gap: var(--s2); margin: var(--s2) 0; }
+.train-progress { margin-top: var(--s3); }
+.train-stage { font-size: var(--fs-body); margin-bottom: var(--s2); }
+.train-meta { color: var(--text-dim); font-size: var(--fs-dim); margin: var(--s2) 0; }
+.train-log {
+  background: #0e1013; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: var(--s2); max-height: 220px; overflow: auto;
+  font-family: Consolas, monospace; font-size: 12px; line-height: 1.5;
+  color: var(--text-dim); white-space: pre-wrap; word-break: break-all;
+}
+.progress-track {
+  height: 6px; background: var(--bg); border-radius: 999px; overflow: hidden;
+}
+.progress-bar { height: 100%; background: var(--primary); transition: width .4s; }

@@ -84,6 +84,18 @@
     tempValue: $('tempValue'),
     seedInput: $('seedInput'),
     rerollBtn: $('rerollBtn'),
+    // 训练
+    trainBadge: $('trainBadge'),
+    trainData: $('trainData'),
+    epochsS2: $('epochsS2'),
+    epochsS1: $('epochsS1'),
+    trainStartBtn: $('trainStartBtn'),
+    trainStopBtn: $('trainStopBtn'),
+    trainProgress: $('trainProgress'),
+    trainStage: $('trainStage'),
+    trainBar: $('trainBar'),
+    trainMeta: $('trainMeta'),
+    trainLog: $('trainLog'),
     // 评测
     evalBtn: $('evalBtn'),
     evalProgress: $('evalProgress'),
@@ -143,6 +155,9 @@
       if (h.engine_up) {
         await Promise.all([loadVoices(), loadHistory(), loadEvalHistory()]);
       }
+      // 训练面板不依赖引擎状态，始终加载
+      loadTrainData();
+      refreshTrainStatus();
     } catch (e) {
       // 可能是 file:// 直接打开（无后端），或后端未启动
       setEngineUp(false, e.message);
@@ -353,6 +368,97 @@
       els.synthBtn.disabled = !state.engineUp;
       els.synthBtn.querySelector('.btn-label').textContent = '🔊 合成';
       els.synthProgress.classList.add('hidden');
+    }
+  }
+
+  // ---------- 训练 ----------
+  let trainTimer = null;
+
+  async function loadTrainData() {
+    if (!els.trainData) return;
+    try {
+      const d = await api('/api/train/data');
+      els.trainData.textContent = d.ready
+        ? `数据就绪：${d.wav_count} 段音频 · 约 ${d.duration_min} 分钟 · 清洗后 ${d.clean_count} 条标注`
+        : '⚠️ 训练数据还不齐（需要 wav 音频 + 清洗后的标注文件）';
+    } catch (e) {
+      els.trainData.textContent = '训练数据检查失败';
+    }
+  }
+
+  function fmtDur(sec) {
+    if (sec == null) return '—';
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m > 0 ? `${m} 分 ${s} 秒` : `${s} 秒`;
+  }
+
+  async function refreshTrainStatus() {
+    if (!els.trainBadge) return;
+    try {
+      const st = await api('/api/train/status');
+      const running = st.running;
+      els.trainBadge.textContent = running ? '训练中' : (st.success === true ? '已完成' : (st.success === false ? '失败/已停' : '空闲'));
+      els.trainBadge.className = 'badge ' + (running ? 'badge-warn' : (st.success === true ? 'badge-ok' : (st.success === false ? 'badge-danger' : 'badge-warn')));
+      els.trainStartBtn.disabled = running || !state.engineUp;
+      els.trainStopBtn.classList.toggle('hidden', !running);
+      els.trainProgress.classList.toggle('hidden', !running && st.stage_index < 0 && !st.log_path);
+
+      if (st.log_path) {
+        els.trainStage.textContent = st.stage || '准备中';
+        const total = st.total_stages || 7;
+        const idx = Math.max(0, st.stage_index + 1);
+        els.trainBar.style.width = Math.round((idx / total) * 100) + '%';
+        els.trainMeta.textContent =
+          `已用 ${fmtDur(st.elapsed_sec)}` +
+          (st.epochs_s2 ? ` · 音色 ${st.epochs_s2} 轮 / 韵律 ${st.epochs_s1} 轮` : '');
+        if (els.trainLog && st.log_tail) {
+          els.trainLog.textContent = st.log_tail.join('\n');
+          els.trainLog.scrollTop = els.trainLog.scrollHeight;
+        }
+      }
+      // 训练中每 5 秒刷新；结束就不再轮询
+      if (running) {
+        if (!trainTimer) trainTimer = setInterval(refreshTrainStatus, 5000);
+      } else if (trainTimer) {
+        clearInterval(trainTimer);
+        trainTimer = null;
+        loadTrainData();
+        loadVoices();
+      }
+    } catch (e) {
+      /* 状态接口失败忽略 */
+    }
+  }
+
+  async function startTraining() {
+    const s2 = parseInt((els.epochsS2 && els.epochsS2.value) || '6', 10);
+    const s1 = parseInt((els.epochsS1 && els.epochsS1.value) || '8', 10);
+    const ok = window.confirm(
+      `开始训练？\n音色模型 ${s2} 轮 + 韵律模型 ${s1} 轮，预计 ${Math.round(s2 * 2 + s1 * 0.6)} 分钟左右。\n训练期间合成会变慢（显存被占用），建议先做完手头的合成。`
+    );
+    if (!ok) return;
+    els.trainStartBtn.disabled = true;
+    try {
+      await api('/api/train/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ epochs_s2: s2, epochs_s1: s1 }),
+      });
+      await refreshTrainStatus();
+    } catch (e) {
+      showError('启动训练失败', String(e.message || e));
+      els.trainStartBtn.disabled = false;
+    }
+  }
+
+  async function stopTraining() {
+    const ok = window.confirm('确定停止训练？已经训练的阶段会保留，但这次不会产出完整模型。');
+    if (!ok) return;
+    try {
+      await api('/api/train/stop', { method: 'POST' });
+      await refreshTrainStatus();
+    } catch (e) {
+      showError('停止失败', String(e.message || e));
     }
   }
 
@@ -865,6 +971,8 @@
   els.savePresetBtn.addEventListener('click', saveCurrentPreset);
   if (els.renameModelBtn) els.renameModelBtn.addEventListener('click', renameCurrentModel);
   if (els.evalBtn) els.evalBtn.addEventListener('click', runEvaluation);
+  if (els.trainStartBtn) els.trainStartBtn.addEventListener('click', startTraining);
+  if (els.trainStopBtn) els.trainStopBtn.addEventListener('click', stopTraining);
 
   // ---------- 音质微调 ----------
   if (els.advToggleBtn) {

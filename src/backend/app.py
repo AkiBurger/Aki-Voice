@@ -36,6 +36,7 @@ from text_split import estimate_seconds, split_sentences
 from translate import TranslateError, is_translator_up, translate, translate_with_engine
 
 import evaluate as evaluator   # 声纹打分（评测用）
+import trainer                 # 训练任务管理（第三期）
 
 # ---------- 路径 ----------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # voice-studio/
@@ -523,6 +524,46 @@ def serve_info():
         "frontend": "/static -> /src/static",
         "output": "/static/output -> outputs",
     }
+
+
+# ============================================================
+# 训练：一键开练（后台跑，界面可看进度）
+# ============================================================
+class TrainStartRequest(BaseModel):
+    epochs_s2: int = 6      # 音色模型轮数
+    epochs_s1: int = 8      # 韵律模型轮数
+
+
+@app.get("/api/train/data")
+def train_data():
+    """训练数据概览。"""
+    return trainer.dataset_summary()
+
+
+@app.get("/api/train/status")
+def train_status():
+    """训练进度 + 最近日志。"""
+    return trainer.status()
+
+
+@app.post("/api/train/start")
+def train_start(req: TrainStartRequest):
+    """开始训练（后台跑，不卡界面）。"""
+    e2 = max(1, min(20, int(req.epochs_s2)))
+    e1 = max(1, min(30, int(req.epochs_s1)))
+    res = trainer.start(epochs_s2=e2, epochs_s1=e1)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("message", "启动失败"))
+    return res
+
+
+@app.post("/api/train/stop")
+def train_stop():
+    """停止训练。"""
+    res = trainer.stop()
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("message", "停止失败"))
+    return res
 
 
 # ============================================================
