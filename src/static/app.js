@@ -96,6 +96,21 @@
     trainBar: $('trainBar'),
     trainMeta: $('trainMeta'),
     trainLog: $('trainLog'),
+    batchS2: $('batchS2'),
+    batchS1: $('batchS1'),
+    // 训练素材
+    sourcePath: $('sourcePath'),
+    scanBtn: $('scanBtn'),
+    scanResult: $('scanResult'),
+    maxSamples: $('maxSamples'),
+    importBtn: $('importBtn'),
+    prepareBtn: $('prepareBtn'),
+    dataBadge: $('dataBadge'),
+    dataJob: $('dataJob'),
+    dataJobStage: $('dataJobStage'),
+    dataJobBar: $('dataJobBar'),
+    dataJobLog: $('dataJobLog'),
+    evalFilter: document.getElementById('evalFilter'),
     // 评测
     evalBtn: $('evalBtn'),
     evalProgress: $('evalProgress'),
@@ -130,10 +145,13 @@
     if (name === 'train') {
       loadTrainData();
       refreshTrainStatus();
+      updateDataStatus();
     }
     if (name === 'eval') {
       loadEvalHistory();
     }
+    const TITLES = { synth: '语音合成', train: '训练模型', eval: '评测打分' };
+    try { document.title = (TITLES[name] || '语音合成') + ' · AkiBurger Voice'; } catch (e) {}
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
   }
 
@@ -398,6 +416,116 @@
     }
   }
 
+  // ---------- 训练素材（提交音频）----------
+  let dataJobTimer = null;
+
+  async function updateDataStatus() {
+    if (!els.dataBadge) return;
+    try {
+      const d = await api('/api/data/status');
+      const ready = d.clean_count > 0;
+      els.dataBadge.textContent = ready ? `就绪 ${d.clean_count} 条` : (d.wav_count > 0 ? `仅导入 ${d.wav_count} 段` : '未导入');
+      els.dataBadge.className = 'badge ' + (ready ? 'badge-ok' : 'badge-warn');
+      if (els.prepareBtn) els.prepareBtn.disabled = d.wav_count === 0;
+      if (els.trainStartBtn) els.trainStartBtn.disabled = !ready || !state.engineUp;
+      if (els.scanResult) {
+        els.scanResult.textContent = ready
+          ? `当前训练数据：${d.wav_count} 段 wav，清洗后 ${d.clean_count} 条标注，可以训练。`
+          : (d.wav_count > 0
+              ? `已导入 ${d.wav_count} 段 wav，还没识别清洗 —— 点「② 识别 + 清洗」。`
+              : '还没有训练数据。选一个音频文件夹，点「扫描」→「① 导入音频」→「② 识别 + 清洗」。');
+      }
+    } catch (e) {
+      /* 忽略 */
+    }
+  }
+
+  async function scanSource() {
+    const path = (els.sourcePath && els.sourcePath.value || '').trim();
+    if (!path) {
+      showError('还没填路径', '把音频文件夹的路径粘贴进来（比如 C:\\Users\\123\\Desktop\\白2\\人声\\雪菜）。');
+      return;
+    }
+    els.scanResult.textContent = '正在扫描…';
+    try {
+      const d = await api('/api/data/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      els.scanResult.textContent =
+        `找到 ${d.file_count} 个音频文件 · 总时长约 ${d.total_min} 分钟 · 平均 ${d.avg_sec} 秒/段` +
+        `（已导入 ${d.already_imported} 段）`;
+    } catch (e) {
+      els.scanResult.textContent = '扫描失败：' + (e.message || e);
+    }
+  }
+
+  async function importAudio() {
+    const path = (els.sourcePath && els.sourcePath.value || '').trim();
+    if (!path) {
+      showError('还没填路径', '先填音频文件夹路径。');
+      return;
+    }
+    const max = parseInt((els.maxSamples && els.maxSamples.value) || '800', 10);
+    const ok = window.confirm(`导入音频？\n上限 ${max} 段，会转成训练格式（wav 16k 单声道）。\n转换需要一些时间，可以关掉页面让它后台跑。`);
+    if (!ok) return;
+    els.importBtn.disabled = true;
+    try {
+      await api('/api/data/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, max_samples: max }),
+      });
+      els.dataJob.classList.remove('hidden');
+      pollDataJob();
+    } catch (e) {
+      showError('导入失败', String(e.message || e));
+      els.importBtn.disabled = false;
+    }
+  }
+
+  async function prepareData() {
+    const ok = window.confirm('开始识别 + 清洗？\n这一步比较久（几百段音频大约 10~30 分钟），可以关掉页面让它后台跑。');
+    if (!ok) return;
+    els.prepareBtn.disabled = true;
+    try {
+      await api('/api/data/prepare', { method: 'POST' });
+      els.dataJob.classList.remove('hidden');
+      pollDataJob();
+    } catch (e) {
+      showError('启动失败', String(e.message || e));
+      els.prepareBtn.disabled = false;
+    }
+  }
+
+  async function pollDataJob() {
+    if (dataJobTimer) clearTimeout(dataJobTimer);
+    try {
+      const j = await api('/api/data/job');
+      if (j.kind) {
+        els.dataJob.classList.remove('hidden');
+        els.dataJobStage.textContent = j.message || '处理中…';
+        const pct = j.total > 0 ? Math.round((j.done / j.total) * 100) : (j.running ? 8 : 100);
+        els.dataJobBar.style.width = pct + '%';
+        if (els.dataJobLog && j.log_tail) {
+          els.dataJobLog.textContent = j.log_tail.join('\n');
+          els.dataJobLog.scrollTop = els.dataJobLog.scrollHeight;
+        }
+      }
+      if (j.running) {
+        dataJobTimer = setTimeout(pollDataJob, 2000);
+      } else {
+        els.importBtn.disabled = false;
+        els.prepareBtn.disabled = false;
+        updateDataStatus();
+        loadTrainData();
+      }
+    } catch (e) {
+      dataJobTimer = setTimeout(pollDataJob, 3000);
+    }
+  }
+
   // ---------- 训练 ----------
   let trainTimer = null;
 
@@ -460,6 +588,8 @@
   async function startTraining() {
     const s2 = parseInt((els.epochsS2 && els.epochsS2.value) || '6', 10);
     const s1 = parseInt((els.epochsS1 && els.epochsS1.value) || '8', 10);
+    const b2 = parseInt((els.batchS2 && els.batchS2.value) || '2', 10);
+    const b1 = parseInt((els.batchS1 && els.batchS1.value) || '4', 10);
     const ok = window.confirm(
       `开始训练？\n音色模型 ${s2} 轮 + 韵律模型 ${s1} 轮，预计 ${Math.round(s2 * 2 + s1 * 0.6)} 分钟左右。\n训练期间合成会变慢（显存被占用），建议先做完手头的合成。`
     );
@@ -469,7 +599,7 @@
       await api('/api/train/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ epochs_s2: s2, epochs_s1: s1 }),
+        body: JSON.stringify({ epochs_s2: s2, epochs_s1: s1, batch_s2: b2, batch_s1: b1 }),
       });
       await refreshTrainStatus();
     } catch (e) {
@@ -530,9 +660,32 @@
       els.evalLangs.appendChild(d);
     }
 
-    // 每句明细（可播放）
+    // 每句明细（可播放，带"像/不像"标签）
+    state.evalLastResult = r;
+    renderEvalDetails(r, state.evalFilter || 'all');
+  }
+
+  function renderEvalDetails(r, filter) {
+    if (!els.evalDetails) return;
     els.evalDetails.innerHTML = '';
-    for (const item of r.details || []) {
+    const showFilter = els.evalFilter;
+    if (showFilter) {
+      showFilter.hidden = false;
+      showFilter.querySelectorAll('.filter-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.filter === filter);
+      });
+    }
+    const details = (r.details || []).filter((it) =>
+      filter === 'bad' ? (it.score == null || it.score < 0.65) : true
+    );
+    if (!details.length) {
+      const empty = document.createElement('div');
+      empty.className = 'eval-detail-empty';
+      empty.textContent = filter === 'bad' ? '好消息：没有明显不像的句子。' : '没有明细。';
+      els.evalDetails.appendChild(empty);
+      return;
+    }
+    for (const item of details) {
       const row = document.createElement('div');
       row.className = 'eval-detail-row';
       const play = document.createElement('span');
@@ -542,10 +695,13 @@
       const txt = document.createElement('span');
       txt.className = 'eval-detail-text';
       txt.textContent = `[${LANG_LABEL[item.lang] || item.lang}] ${item.text}`;
+      const lv = document.createElement('span');
+      lv.className = 'lv-chip ' + evalLevelClass(item.level);
+      lv.textContent = item.level || '—';
       const score = document.createElement('span');
       score.className = 'eval-detail-score';
       score.textContent = item.score != null ? item.score.toFixed(3) : '—';
-      row.append(play, txt, score);
+      row.append(play, txt, lv, score);
       if (item.audio_url) {
         row.addEventListener('click', () => {
           if (state.historyPlayer) state.historyPlayer.pause();
@@ -999,6 +1155,17 @@
   if (els.renameModelBtn) els.renameModelBtn.addEventListener('click', renameCurrentModel);
   if (els.evalBtn) els.evalBtn.addEventListener('click', runEvaluation);
   if (els.trainStartBtn) els.trainStartBtn.addEventListener('click', startTraining);
+  if (els.scanBtn) els.scanBtn.addEventListener('click', scanSource);
+  if (els.importBtn) els.importBtn.addEventListener('click', importAudio);
+  if (els.prepareBtn) els.prepareBtn.addEventListener('click', prepareData);
+  if (els.evalFilter) {
+    els.evalFilter.querySelectorAll('.filter-btn').forEach((b) => {
+      b.addEventListener('click', () => {
+        state.evalFilter = b.dataset.filter;
+        if (state.evalLastResult) renderEvalDetails(state.evalLastResult, state.evalFilter);
+      });
+    });
+  }
   if (els.trainStopBtn) els.trainStopBtn.addEventListener('click', stopTraining);
 
   // ---------- 音质微调 ----------

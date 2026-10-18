@@ -37,6 +37,7 @@ from translate import TranslateError, is_translator_up, translate, translate_wit
 
 import evaluate as evaluator   # 声纹打分（评测用）
 import trainer                 # 训练任务管理（第三期）
+import data_prep               # 训练素材：导入/识别/清洗（第三期）
 
 # ---------- 路径 ----------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # voice-studio/
@@ -559,6 +560,60 @@ def serve_info():
 class TrainStartRequest(BaseModel):
     epochs_s2: int = 6      # 音色模型轮数
     epochs_s1: int = 8      # 韵律模型轮数
+    batch_s2: int = 2       # 音色模型批量（8G 显存建议 2）
+    batch_s1: int = 4       # 韵律模型批量
+
+
+class ScanSourceRequest(BaseModel):
+    path: str
+
+
+class ImportSourceRequest(BaseModel):
+    path: str
+    max_samples: int = 800
+
+
+@app.get("/api/data/status")
+def data_status():
+    """训练数据现状。"""
+    return data_prep.current_dataset()
+
+
+@app.post("/api/data/scan")
+def data_scan(req: ScanSourceRequest):
+    """扫描一个文件夹里的音频（只读元数据，不动文件）。"""
+    try:
+        return {"ok": True, **data_prep.scan_source(req.path)}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except NotADirectoryError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/data/import")
+def data_import(req: ImportSourceRequest):
+    """把音频导入成训练用 wav（后台转换，有进度）。"""
+    res = data_prep.start_import(req.path, req.max_samples)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("message", "导入失败"))
+    return res
+
+
+@app.post("/api/data/prepare")
+def data_prepare():
+    """语音识别 + 清洗（后台跑，比较久）。"""
+    res = data_prep.start_prepare()
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("message", "启动失败"))
+    return res
+
+
+@app.get("/api/data/job")
+def data_job():
+    """导入/识别的实时进度。"""
+    return data_prep.job_status()
 
 
 @app.get("/api/train/data")
@@ -578,7 +633,9 @@ def train_start(req: TrainStartRequest):
     """开始训练（后台跑，不卡界面）。"""
     e2 = max(1, min(20, int(req.epochs_s2)))
     e1 = max(1, min(30, int(req.epochs_s1)))
-    res = trainer.start(epochs_s2=e2, epochs_s1=e1)
+    b2 = max(1, min(8, int(req.batch_s2)))
+    b1 = max(1, min(16, int(req.batch_s1)))
+    res = trainer.start(epochs_s2=e2, epochs_s1=e1, batch_s2=b2, batch_s1=b1)
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("message", "启动失败"))
     return res

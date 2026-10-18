@@ -127,7 +127,7 @@ def is_running() -> bool:
     return bool(_state["running"] and p is not None and p.poll() is None)
 
 
-def start(epochs_s2: int = 6, epochs_s1: int = 8) -> dict:
+def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: int = 4) -> dict:
     """启动训练。返回状态字典。"""
     if is_running():
         return {"ok": False, "message": "已经有训练在跑了"}
@@ -147,6 +147,8 @@ def start(epochs_s2: int = 6, epochs_s1: int = 8) -> dict:
     env["PYTHONUNBUFFERED"] = "1"
     env["ABV_S2_EPOCHS"] = str(int(epochs_s2))
     env["ABV_S1_EPOCHS"] = str(int(epochs_s1))
+    env["ABV_S2_BATCH"] = str(int(batch_s2))
+    env["ABV_S1_BATCH"] = str(int(batch_s1))
     env["PATH"] = r"D:\Dev\tools\ffmpeg\bin;" + env.get("PATH", "")
 
     with _lock:
@@ -161,6 +163,8 @@ def start(epochs_s2: int = 6, epochs_s1: int = 8) -> dict:
         "log_path": str(log_path),
         "epochs_s2": int(epochs_s2),
         "epochs_s1": int(epochs_s1),
+        "batch_s2": int(batch_s2),
+        "batch_s1": int(batch_s1),
         "last_error": "",
         "stopped_by_user": False,
     })

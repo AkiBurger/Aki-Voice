@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AkiBurger Voice · 合成台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2314161a'/><text x='50' y='68' font-size='48' text-anchor='middle' fill='%234a9eff' font-family='sans-serif' font-weight='bold'>A</text></svg>">
-<link rel="stylesheet" href="styles.css?v=20261018j">
+<link rel="stylesheet" href="styles.css?v=20261018m">
 </head>
 <body>
 
@@ -29,21 +29,26 @@
   </div>
 </header>
 
-<!-- ===== 流程导航（可点击切换页面）===== -->
-<nav class="flowbar" aria-label="工作流程">
-  <button type="button" class="flow-step future" disabled title="功能开发中"><span class="flow-dot">○</span>素材</button>
-  <button type="button" class="flow-step future" disabled title="功能开发中"><span class="flow-dot">○</span>质检</button>
-  <button type="button" class="flow-step future" disabled title="功能开发中"><span class="flow-dot">○</span>标注</button>
-  <button type="button" class="flow-step" data-view="train"><span class="flow-dot">◉</span>训练</button>
-  <button type="button" class="flow-step" data-view="eval"><span class="flow-dot">◉</span>评测</button>
-  <button type="button" class="flow-step current" data-view="synth"><span class="flow-dot">●</span>合成</button>
+<!-- ===== 页面导航（可点击切换）===== -->
+<nav class="flowbar" aria-label="页面导航">
+  <button type="button" class="flow-step future" disabled title="开发中"><span class="flow-dot">○</span>素材</button>
+  <button type="button" class="flow-step future" disabled title="开发中"><span class="flow-dot">○</span>质检</button>
+  <button type="button" class="flow-step future" disabled title="开发中"><span class="flow-dot">○</span>标注</button>
+  <button type="button" class="flow-step nav" data-view="train" title="打开训练页：训练/更新声音模型"><span class="flow-dot">◉</span>训练<b class="nav-hint">训练模型</b></button>
+  <button type="button" class="flow-step nav" data-view="eval" title="打开评测页：给声音打分"><span class="flow-dot">◉</span>评测<b class="nav-hint">打分对比</b></button>
+  <button type="button" class="flow-step nav current" data-view="synth" title="打开合成页：文字转语音"><span class="flow-dot">●</span>合成<b class="nav-hint">文字转语音</b></button>
 </nav>
-<div class="flowbar-note">点上面的标签切换页面：训练 / 评测 / 合成　·　素材、质检、标注开发中</div>
+<div class="flowbar-note">上面高亮的三个是页面按钮，点一下就能切过去（素材/质检/标注还在开发中）</div>
 
 <main class="workspace">
 
   <!-- ===== 合成页 ===== -->
   <div class="view" id="view-synth">
+
+  <header class="page-head">
+    <h2 class="page-title">🎙 语音合成</h2>
+    <p class="page-sub">写文字 → 选语言和语气 → 生成音频。这是日常使用的主页面。</p>
+  </header>
 
   <!-- ===== 引擎未就绪提示（默认隐藏）===== -->
   <section id="engineDown" class="notice notice-warn hidden">
@@ -236,10 +241,46 @@
 
   <!-- ===== 训练页 ===== -->
   <div class="view hidden" id="view-train">
+
+  <header class="page-head">
+    <h2 class="page-title">🎬 训练声音模型</h2>
+    <p class="page-sub">用准备好的音频训练或更新音色模型。训练完成后会自动挂到合成页使用，建议再跑一次评测对比分数。</p>
+  </header>
+
+  <!-- ===== 训练素材（提交音频） ===== -->
+  <section class="card" id="dataSection">
+    <div class="history-head">
+      <div class="field-label" style="margin:0;border:0;padding:0;">训练素材</div>
+      <span id="dataBadge" class="badge badge-warn">未导入</span>
+    </div>
+    <div class="train-note">
+      三步：<b>选文件夹 → 导入音频 → 识别 + 清洗</b>。做完这三步才能训练。<br>
+      音频格式支持 ogg / wav / flac / mp3 等，导入时会自动转成训练要的 wav。
+    </div>
+    <div class="data-row">
+      <input id="sourcePath" class="data-input" type="text"
+             placeholder="音频文件夹路径，例如 C:\Users\123\Desktop\白2\人声\雪菜">
+      <button type="button" id="scanBtn" class="btn-secondary btn-sm">扫描</button>
+    </div>
+    <div class="data-scan-result" id="scanResult">还没扫描。填好路径后点「扫描」看看有多少素材。</div>
+    <div class="data-row">
+      <label class="train-param">导入条数上限
+        <input id="maxSamples" type="number" value="800" min="10" max="8000">
+      </label>
+      <button type="button" id="importBtn" class="btn-secondary btn-sm">① 导入音频</button>
+      <button type="button" id="prepareBtn" class="btn-secondary btn-sm">② 识别 + 清洗</button>
+    </div>
+    <div id="dataJob" class="data-job hidden">
+      <div class="train-stage" id="dataJobStage">—</div>
+      <div class="progress-track"><div id="dataJobBar" class="progress-bar" style="width:0%"></div></div>
+      <pre class="train-log" id="dataJobLog"></pre>
+    </div>
+  </section>
+
   <!-- ===== 训练 ===== -->
   <section class="card" id="trainSection">
     <div class="history-head">
-      <div class="field-label" style="margin:0;border:0;padding:0;">🎬 训练</div>
+      <div class="field-label" style="margin:0;border:0;padding:0;">本次训练</div>
       <span id="trainBadge" class="badge badge-warn">空闲</span>
     </div>
     <div class="train-data" id="trainData">正在检查训练数据…</div>
@@ -249,6 +290,12 @@
       </label>
       <label class="train-param">韵律模型轮数
         <input id="epochsS1" type="number" value="8" min="1" max="30">
+      </label>
+      <label class="train-param">音色批量
+        <input id="batchS2" type="number" value="2" min="1" max="8">
+      </label>
+      <label class="train-param">韵律批量
+        <input id="batchS1" type="number" value="4" min="1" max="16">
       </label>
     </div>
     <div class="train-note">轮数越多越像但越慢（音色模型约 2 分钟/轮）。训练期间合成会变慢。<br>训练完成后会自动挂载新权重，并建议跑一次评测。</div>
@@ -269,15 +316,32 @@
   <!-- ===== 评测页 ===== -->
   <div class="view hidden" id="view-eval">
 
+  <header class="page-head">
+    <h2 class="page-title">📊 评测打分</h2>
+    <p class="page-sub">用声纹模型客观测量"像不像"：自动合成测试台词，跟参考音频比相似度。分数越高越像本人。</p>
+  </header>
+
   <!-- ===== 评测打分 ===== -->
   <section class="card" id="evalSection">
     <div class="history-head">
-      <div class="field-label" style="margin:0;border:0;padding:0;">📊 评测打分</div>
+      <div class="field-label" style="margin:0;border:0;padding:0;">本次评测</div>
       <button type="button" id="evalBtn" class="btn-secondary btn-sm" disabled>开始评测</button>
     </div>
     <div class="eval-note">
       用声纹模型客观测量"像不像"：自动合成 11 句测试台词（5 句日文 + 3 句中文 + 3 句英文），
       跟参考音频比声纹相似度。约 1.5 分钟，不影响你正常使用。
+    </div>
+
+    <div class="eval-legend">
+      <span class="lv-chip lv-good">≥ 0.78 很像</span>
+      <span class="lv-chip lv-ok">0.65 ~ 0.78 像</span>
+      <span class="lv-chip lv-mid">0.50 ~ 0.65 一般</span>
+      <span class="lv-chip lv-bad">&lt; 0.50 不像</span>
+      <span class="eval-legend-note">分数 = 跟参考音频的声纹相似度，1.000 是同一个声音</span>
+    </div>
+    <div class="eval-filter" id="evalFilter" hidden>
+      <button type="button" class="filter-btn active" data-filter="all">全部</button>
+      <button type="button" class="filter-btn" data-filter="bad">只看不够像的</button>
     </div>
 
     <div id="evalProgress" class="eval-progress hidden">
@@ -315,6 +379,6 @@
   <span id="footEngine">引擎状态未知</span>
 </footer>
 
-<script src="app.js?v=20261018j"></script>
+<script src="app.js?v=20261018m"></script>
 </body>
 </html>

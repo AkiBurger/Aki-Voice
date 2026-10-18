@@ -903,3 +903,128 @@ button.flow-step.done { color: var(--success); }
 /* 页面容器：同一时间只显示一个 */
 .view { display: flex; flex-direction: column; gap: var(--s3); }
 .view.hidden { display: none; }
+
+/* ============ 页面标题与导航提示 ============ */
+.page-head { margin-bottom: var(--s2); }
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.page-sub {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: var(--fs-dim);
+  line-height: 1.6;
+}
+
+/* 导航按钮：明确"可点击"的样子 */
+button.flow-step.nav {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+  gap: 6px;
+}
+button.flow-step.nav:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(74, 158, 255, 0.10);
+}
+button.flow-step.nav.current {
+  border-color: var(--primary);
+  background: rgba(74, 158, 255, 0.16);
+  color: var(--primary);
+}
+button.flow-step.nav.current .nav-hint { color: var(--primary); opacity: 0.8; }
+
+/* 按钮下方的小字说明：告诉用户这页是干嘛的 */
+.nav-hint {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-dim);
+  opacity: 0.75;
+  margin-left: 2px;
+}
+
+/* 开发中的标签：虚线边框，一眼看出不可用 */
+button.flow-step.future:disabled {
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  opacity: 0.4;
+}
+
+/* ============ 训练素材（提交音频） ============ */
+.data-row {
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin: var(--s2) 0;
+}
+.data-input {
+  flex: 1;
+  min-width: 260px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-dim);
+  padding: 7px 10px;
+}
+.data-input:focus { outline: none; border-color: var(--primary); }
+.data-scan-result {
+  color: var(--text-dim);
+  font-size: var(--fs-dim);
+  line-height: 1.6;
+  margin: var(--s1) 0 var(--s2);
+}
+.data-job { margin-top: var(--s2); }
+
+/* ============ 评测图例与筛选 ============ */
+.eval-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin: var(--s2) 0;
+}
+.eval-legend-note {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.lv-chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 11px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.lv-chip.lv-good { color: var(--success); }
+.lv-chip.lv-ok { color: var(--primary); }
+.lv-chip.lv-mid { color: var(--warning); }
+.lv-chip.lv-bad { color: var(--danger); }
+
+.eval-filter { display: flex; gap: var(--s2); margin: var(--s2) 0; }
+.filter-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.filter-btn:hover { color: var(--text); }
+.filter-btn.active {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: rgba(74, 158, 255, 0.10);
+}
+.eval-detail-empty { color: var(--text-dim); font-size: var(--fs-dim); padding: 6px 2px; }
