@@ -46,6 +46,24 @@ PORT = 8017
 
 app = FastAPI(title="AkiBurger Voice")
 
+
+# ---------- 禁止前端被浏览器缓存 ----------
+# 改代码后用户不按 Ctrl+F5 也能拿到最新界面（静态文件和页面一律不缓存）
+@app.middleware("http")
+async def no_cache_static(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/") and not path.startswith("/static/output/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        # 去掉会让浏览器用旧副本的校验头
+        for h in ("etag", "last-modified"):
+            if h in response.headers:
+                del response.headers[h]
+    return response
+
+
 # ---------- 静态托管（audio_url 能直接播） ----------
 # 注意顺序：/static/output 必须挂在 /static 前面，否则会被后者吞掉
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -271,19 +289,21 @@ def synthesize_text(req: SynthesizeRequest):
 
 @app.get("/api/history")
 def history():
-    """最近 20 条合成记录。"""
+    """最近 20 条合成记录（只认有 meta.json 的真正合成记录，子目录如 ab_test 不算）。"""
     items = []
     if OUTPUT_DIR.exists():
         for job_dir in sorted(OUTPUT_DIR.iterdir(), reverse=True):
             if not job_dir.is_dir():
                 continue
-            meta = {}
             meta_file = job_dir / "meta.json"
-            if meta_file.exists():
-                try:
-                    meta = json.loads(meta_file.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
+            # 没有 meta.json 的目录（比如手动放的对比样本）不算历史记录
+            if not meta_file.exists():
+                continue
+            meta = {}
+            try:
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
             full = job_dir / "full.wav"
             items.append({
                 "time": job_dir.name,
@@ -302,7 +322,7 @@ def history():
 
 
 def _safe_job_dir(stamp: str) -> Path:
-    """校验历史条目名，防止路径穿越（只能删 outputs 下的一级目录）。"""
+    """校验历史条目名，防止路径穿越（只能删 outputs 下、真正的合成记录目录）。"""
     name = (stamp or "").strip().replace("\\", "/")
     if not name or "/" in name or ".." in name:
         raise HTTPException(status_code=400, detail="历史记录名不合法")
@@ -311,6 +331,9 @@ def _safe_job_dir(stamp: str) -> Path:
         raise HTTPException(status_code=400, detail="历史记录名不合法")
     if not target.is_dir():
         raise HTTPException(status_code=404, detail="这条历史记录不存在（可能已删除）")
+    # 只允许删真正的合成记录（有 meta.json），避免误删手动放入的对比样本
+    if not (target / "meta.json").exists():
+        raise HTTPException(status_code=400, detail="这不是一条合成记录，不能从这里删除")
     return target
 
 

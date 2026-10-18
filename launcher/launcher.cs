@@ -19,7 +19,7 @@ namespace AkiBurgerVoice
         const string BACKEND_URL = "http://127.0.0.1:8017";
         const string PAGE_URL = "http://127.0.0.1:8017/static/index.html";
         const string GPT_WEIGHTS = "GPT_weights_v2Pro/setsuna_light-e8.ckpt";
-        const string SOVITS_WEIGHTS = "SoVITS_weights_v2Pro/setsuna_light_e6_s1086.pth";
+        const string SOVITS_WEIGHTS = "SoVITS_weights_v2Pro/setsuna_light_e2_s362.pth";
 
         string logPath;
         Label lblStatus;
