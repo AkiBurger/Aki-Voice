@@ -1066,3 +1066,47 @@ button.flow-step.future:disabled {
   font-family: var(--font); font-size: var(--fs-dim); padding: 4px 8px;
 }
 .ann-input:focus { outline: none; border-color: var(--primary); }
+
+/* ============ 训练高级参数 ============ */
+.adv-params {
+  display: flex;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  margin: var(--s2) 0;
+  padding: var(--s2) var(--s3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+.train-check { color: var(--text); cursor: pointer; }
+.train-check input { width: auto; }
+
+/* ============ 提示 toast ============ */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%) translateY(12px);
+  background: rgba(20, 24, 30, 0.96);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: var(--fs-dim);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s, transform .18s;
+  z-index: 999;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ============ 评测对象与结论 ============ */
+.eval-target { color: var(--text); font-size: var(--fs-dim); margin: var(--s2) 0; line-height: 1.6; }
+.eval-conclusion {
+  margin: var(--s2) 0;
+  padding: var(--s2) var(--s3);
+  border-left: 3px solid var(--primary);
+  background: rgba(74, 158, 255, 0.06);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-dim);
+  line-height: 1.7;
+}

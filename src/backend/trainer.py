@@ -92,6 +92,8 @@ def _waiter(proc):
     _state["stage"] = "完成" if code == 0 else "失败"
     if code == 0:
         _attach_new_weights()
+        if _state.get("auto_eval"):
+            _auto_eval()
 
 
 def _attach_new_weights():
@@ -127,7 +129,9 @@ def is_running() -> bool:
     return bool(_state["running"] and p is not None and p.poll() is None)
 
 
-def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: int = 4) -> dict:
+def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: int = 4,
+          save_every_s2: int = 2, save_every_s1: int = 4,
+          lr_s2: float = 0.0, lr_s1: float = 0.0, auto_eval: bool = False) -> dict:
     """启动训练。返回状态字典。"""
     if is_running():
         return {"ok": False, "message": "已经有训练在跑了"}
@@ -149,6 +153,12 @@ def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: i
     env["ABV_S1_EPOCHS"] = str(int(epochs_s1))
     env["ABV_S2_BATCH"] = str(int(batch_s2))
     env["ABV_S1_BATCH"] = str(int(batch_s1))
+    env["ABV_S2_SAVE_EVERY"] = str(max(1, int(save_every_s2)))
+    env["ABV_S1_SAVE_EVERY"] = str(max(1, int(save_every_s1)))
+    if lr_s2 and float(lr_s2) > 0:
+        env["ABV_S2_LR"] = str(float(lr_s2))
+    if lr_s1 and float(lr_s1) > 0:
+        env["ABV_S1_LR"] = str(float(lr_s1))
     env["PATH"] = r"D:\Dev\tools\ffmpeg\bin;" + env.get("PATH", "")
 
     with _lock:
@@ -165,6 +175,11 @@ def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: i
         "epochs_s1": int(epochs_s1),
         "batch_s2": int(batch_s2),
         "batch_s1": int(batch_s1),
+        "save_every_s2": int(save_every_s2),
+        "save_every_s1": int(save_every_s1),
+        "lr_s2": float(lr_s2 or 0),
+        "lr_s1": float(lr_s1 or 0),
+        "auto_eval": bool(auto_eval),
         "last_error": "",
         "stopped_by_user": False,
     })
@@ -267,3 +282,22 @@ def dataset_summary() -> dict:
         "duration_min": round(total_sec / 60, 1),
         "ready": clean_list.exists() and len(wavs) > 0,
     }
+
+
+def _auto_eval():
+    """训练完成后自动跑一次评测。"""
+    try:
+        import requests
+        with _lock:
+            _lines.append("[自动] 训练完成，开始自动评测…")
+        r = requests.post("http://127.0.0.1:8017/api/evaluate", timeout=3600)
+        if r.status_code == 200:
+            res = r.json().get("result", {})
+            with _lock:
+                _lines.append(f"[自动] 评测完成：总评 {res.get('overall')}（{res.get('level')}）")
+        else:
+            with _lock:
+                _lines.append(f"[自动] 评测失败：HTTP {r.status_code}")
+    except Exception as e:
+        with _lock:
+            _lines.append(f"[自动] 评测失败：{e}")

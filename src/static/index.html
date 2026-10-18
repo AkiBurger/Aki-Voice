@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AkiBurger Voice · 合成台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2314161a'/><text x='50' y='68' font-size='48' text-anchor='middle' fill='%234a9eff' font-family='sans-serif' font-weight='bold'>A</text></svg>">
-<link rel="stylesheet" href="styles.css?v=20261018n">
+<link rel="stylesheet" href="styles.css?v=20261018p">
 </head>
 <body>
 
@@ -302,7 +302,10 @@
   <section class="card">
     <div class="history-head">
       <div class="field-label" style="margin:0;border:0;padding:0;">检查结果</div>
-      <button type="button" id="qcRunBtn" class="btn-secondary btn-sm">开始质检</button>
+      <div class="material-actions">
+        <button type="button" id="qcClearBtn" class="btn-danger-link">清空结果</button>
+        <button type="button" id="qcRunBtn" class="btn-secondary btn-sm">开始质检</button>
+      </div>
     </div>
     <div id="qcSummary" class="qc-summary">还没检查过。点「开始质检」，几百段音频大约十几秒。</div>
     <div class="eval-filter" id="qcFilter" hidden>
@@ -327,6 +330,7 @@
     <div class="history-head">
       <div class="field-label" style="margin:0;border:0;padding:0;">标注列表</div>
       <div class="material-actions">
+        <button type="button" id="annClearBtn" class="btn-danger-link">清空列表</button>
         <button type="button" id="annRefreshBtn" class="btn-secondary btn-sm">刷新</button>
       </div>
     </div>
@@ -369,6 +373,23 @@
         <input id="batchS1" type="number" value="4" min="1" max="16">
       </label>
     </div>
+    <div class="adv-params">
+      <label class="train-param">音色保存间隔
+        <input id="saveEveryS2" type="number" value="2" min="1" max="10">
+      </label>
+      <label class="train-param">韵律保存间隔
+        <input id="saveEveryS1" type="number" value="4" min="1" max="20">
+      </label>
+      <label class="train-param">音色学习率
+        <input id="lrS2" type="number" value="0" min="0" max="1" step="0.0001" placeholder="0=默认">
+      </label>
+      <label class="train-param">韵律学习率
+        <input id="lrS1" type="number" value="0" min="0" max="1" step="0.0001" placeholder="0=默认">
+      </label>
+      <label class="train-param train-check">
+        <input id="autoEval" type="checkbox"> 训完自动评测
+      </label>
+    </div>
     <div class="train-note">轮数越多越像但越慢（音色模型约 2 分钟/轮）。训练期间合成会变慢。<br>训练完成后会自动挂载新权重，并建议跑一次评测。</div>
     <div class="train-actions">
       <button type="button" id="trainStartBtn" class="btn-secondary">开始训练</button>
@@ -393,6 +414,15 @@
   </header>
 
   <!-- ===== 评测打分 ===== -->
+  <section class="card" id="evalTargetCard">
+    <div class="field-label">评测对象</div>
+    <div id="evalTarget" class="eval-target">正在读取…</div>
+    <div class="train-note">
+      评测方法：自动合成 5 句日文（取自训练数据）+ 3 句中文 + 3 句英文，
+      跟参考音频比"声纹相似度"。分数只反映"像不像本人"，不评价好不好听。
+    </div>
+  </section>
+
   <section class="card" id="evalSection">
     <div class="history-head">
       <div class="field-label" style="margin:0;border:0;padding:0;">本次评测</div>
@@ -428,6 +458,7 @@
           <div class="eval-model" id="evalModel"></div>
         </div>
       </div>
+      <div class="eval-conclusion" id="evalConclusion"></div>
       <div class="eval-langs" id="evalLangs"></div>
       <div class="eval-details" id="evalDetails"></div>
     </div>
@@ -450,6 +481,6 @@
   <span id="footEngine">引擎状态未知</span>
 </footer>
 
-<script src="app.js?v=20261018n"></script>
+<script src="app.js?v=20261018p"></script>
 </body>
 </html>

@@ -22,7 +22,10 @@
     voices: [],
     currentAudioUrl: null,
     engineUp: false,
-    historyPlayer: null,      // 正在播放历史的 <audio>
+    currentAudio: null,       // 当前正在播放的音频（全局只响一个）
+    qcFilter: 'all',
+    annFilter: 'all',
+    datasetSnapshot: '',      // 上次的数据指纹，变了就清空质检/标注结果
     currentHistoryUrl: null,
     temperature: 0.9,         // 音质微调：越低越稳
     seed: -1,                 // -1 = 每次随机
@@ -117,6 +120,7 @@
     materialClearBtn: $('materialClearBtn'),
     // 质检页
     qcRunBtn: $('qcRunBtn'),
+    qcClearBtn: $('qcClearBtn'),
     qcSummary: $('qcSummary'),
     qcFilter: $('qcFilter'),
     qcList: $('qcList'),
@@ -125,6 +129,16 @@
     annList: $('annList'),
     annFilter: $('annFilter'),
     annRefreshBtn: $('annRefreshBtn'),
+    annClearBtn: $('annClearBtn'),
+    // 训练高级参数
+    saveEveryS2: $('saveEveryS2'),
+    saveEveryS1: $('saveEveryS1'),
+    lrS2: $('lrS2'),
+    lrS1: $('lrS1'),
+    autoEval: $('autoEval'),
+    // 评测对象
+    evalTarget: $('evalTarget'),
+    evalConclusion: $('evalConclusion'),
     evalFilter: document.getElementById('evalFilter'),
     // 评测
     evalBtn: $('evalBtn'),
@@ -166,6 +180,7 @@
     if (name === 'qc') { loadQcReport(); }
     if (name === 'annotation') { loadAnnotations(); }
     if (name === 'eval') {
+      loadEvalTarget();
       loadEvalHistory();
     }
     const TITLES = { synth: '语音合成', train: '训练模型', eval: '评测打分', material: '素材', qc: '质检', annotation: '标注' };
@@ -434,12 +449,28 @@
     }
   }
 
+  // ---------- 统一播放：任何时候只响一个 ----------
+  function stopAudio() {
+    if (state.currentAudio) {
+      try { state.currentAudio.pause(); } catch (e) { /* 忽略 */ }
+      state.currentAudio = null;
+    }
+  }
+
+  function playAudio(url) {
+    if (!url) return;
+    stopAudio();
+    const a = new Audio(url);
+    state.currentAudio = a;
+    a.addEventListener('ended', () => {
+      if (state.currentAudio === a) state.currentAudio = null;
+    });
+    a.play().catch(() => {});
+  }
+
   // ---------- 素材页 ----------
   function audioPlay(url) {
-    if (state.historyPlayer) state.historyPlayer.pause();
-    const a = new Audio(url);
-    state.historyPlayer = a;
-    a.play().catch(() => {});
+    playAudio(url);
   }
 
   async function loadMaterials() {
@@ -681,9 +712,52 @@
               ? `已导入 ${d.wav_count} 段 wav，还没识别清洗 —— 点「② 识别 + 清洗」。`
               : '还没有训练数据。选一个音频文件夹，点「扫描」→「① 导入音频」→「② 识别 + 清洗」。');
       }
+      // 数据变了（导入/删除/清洗）→ 旧的质检和标注结果就不作数了，自动清空
+      const fingerprint = `${d.wav_count}/${d.clean_count}`;
+      if (state.datasetSnapshot && state.datasetSnapshot !== fingerprint) {
+        await clearQcResult(true);
+        clearAnnResult(true);
+      }
+      state.datasetSnapshot = fingerprint;
     } catch (e) {
       /* 忽略 */
     }
+  }
+
+  // ---------- 结果清空（换模型/换数据时自动、也可手动）----------
+  async function clearQcResult(silent) {
+    qcLastReport = null;
+    if (els.qcSummary) els.qcSummary.textContent = '还没检查过。点「开始质检」，几百段音频大约十几秒。';
+    if (els.qcFilter) els.qcFilter.hidden = true;
+    if (els.qcList) els.qcList.innerHTML = '';
+    try {
+      await api('/api/qc/report', { method: 'DELETE' });
+    } catch (e) {
+      /* 忽略 */
+    }
+    if (!silent) showToast('质检结果已清空');
+  }
+
+  function clearAnnResult(silent) {
+    annLastData = null;
+    if (els.annStats) els.annStats.textContent = '列表已清空，点「刷新」重新读取。';
+    if (els.annFilter) els.annFilter.hidden = true;
+    if (els.annList) els.annList.innerHTML = '';
+    if (!silent) showToast('标注列表已清空');
+  }
+
+  function showToast(msg) {
+    let el = document.getElementById('toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toast';
+      el.className = 'toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => el.classList.remove('show'), 1800);
   }
 
   async function scanSource() {
@@ -845,7 +919,14 @@
       await api('/api/train/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ epochs_s2: s2, epochs_s1: s1, batch_s2: b2, batch_s1: b1 }),
+        body: JSON.stringify({
+          epochs_s2: s2, epochs_s1: s1, batch_s2: b2, batch_s1: b1,
+          save_every_s2: parseInt((els.saveEveryS2 && els.saveEveryS2.value) || '2', 10),
+          save_every_s1: parseInt((els.saveEveryS1 && els.saveEveryS1.value) || '4', 10),
+          lr_s2: parseFloat((els.lrS2 && els.lrS2.value) || '0'),
+          lr_s1: parseFloat((els.lrS1 && els.lrS1.value) || '0'),
+          auto_eval: !!(els.autoEval && els.autoEval.checked),
+        }),
       });
       await refreshTrainStatus();
     } catch (e) {
@@ -889,6 +970,27 @@
     }
   }
 
+  async function loadEvalTarget() {
+    if (!els.evalTarget) return;
+    try {
+      const [models, voices, tests] = await Promise.all([
+        api('/api/models'),
+        api('/api/voices'),
+        api('/api/evaluate/tests'),
+      ]);
+      const m = (models.models || [])[0];
+      const v = (voices.voices || [])[0];
+      const jaN = (tests.ja || []).length;
+      const zhN = ((tests.cross || {}).zh || []).length;
+      const enN = ((tests.cross || {}).en || []).length;
+      els.evalTarget.textContent =
+        `当前模型：${m ? m.name : '默认'} · 参考音频：${v ? (v.name === m?.id ? '默认参考音频' : v.name) : '—'} · ` +
+        `测试句：${jaN} 句日文 + ${zhN} 句中文 + ${enN} 句英文（共 ${jaN + zhN + enN} 句）`;
+    } catch (e) {
+      els.evalTarget.textContent = '读取评测对象失败';
+    }
+  }
+
   function renderEvalResult(r) {
     if (!els.evalResult) return;
     els.evalResult.classList.remove('hidden');
@@ -896,6 +998,28 @@
     els.evalLevel.textContent = r.level || '—';
     els.evalLevel.className = 'eval-level ' + evalLevelClass(r.level);
     els.evalModel.textContent = '当前模型：' + (r.model || '默认');
+
+    // 人话结论
+    if (els.evalConclusion) {
+      const parts = [];
+      const names = { ja: '日文', zh: '中文', en: '英文' };
+      let best = null;
+      for (const [lang, v] of Object.entries(r.by_lang || {})) {
+        if (v.avg == null) continue;
+        parts.push(`${names[lang] || lang} ${v.avg.toFixed(2)}（${levelWord(v.avg)}）`);
+        if (!best || v.avg > best.avg) best = { lang, avg: v.avg };
+      }
+      let tail = '';
+      if (r.overall != null) {
+        tail = r.overall >= 0.78
+          ? '整体达到"很像"水平，可以直接用。'
+          : r.overall >= 0.65
+            ? '整体"像"，日常能用；想更像可以扩数据或加训练轮数。'
+            : '整体一般，建议先看「标注」和「质检」有没有脏数据。';
+      }
+      const bestTxt = best ? `最好的是${names[best.lang] || best.lang}。` : '';
+      els.evalConclusion.textContent = parts.length ? `结论：${parts.join('，')}。${bestTxt}${tail}` : '结论：没有拿到有效分数。';
+    }
 
     // 分语言小分
     els.evalLangs.innerHTML = '';
@@ -909,6 +1033,13 @@
     // 每句明细（可播放，带"像/不像"标签）
     state.evalLastResult = r;
     renderEvalDetails(r, state.evalFilter || 'all');
+  }
+
+  function levelWord(score) {
+    if (score >= 0.78) return '很像';
+    if (score >= 0.65) return '像';
+    if (score >= 0.50) return '一般';
+    return '不像';
   }
 
   function renderEvalDetails(r, filter) {
@@ -949,12 +1080,7 @@
       score.textContent = item.score != null ? item.score.toFixed(3) : '—';
       row.append(play, txt, lv, score);
       if (item.audio_url) {
-        row.addEventListener('click', () => {
-          if (state.historyPlayer) state.historyPlayer.pause();
-          const a = new Audio(item.audio_url);
-          state.historyPlayer = a;
-          a.play().catch(() => {});
-        });
+        row.addEventListener('click', () => playAudio(item.audio_url));
       }
       els.evalDetails.appendChild(row);
     }
@@ -1135,9 +1261,8 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
-      const audio = new Audio(objUrl);
-      audio.onended = () => URL.revokeObjectURL(objUrl);
-      await audio.play();
+      playAudio(objUrl);
+      setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
     } catch (e) {
       // 后端还没实现 /api/preview，给出人话提示，请 lead 补接口
       showError(
@@ -1316,27 +1441,23 @@
     row.addEventListener('click', (e) => {
       if (e.target === dl) return;
       if (!url) return;
-      if (state.historyPlayer && state.historyPlayer.src === url) {
-        state.historyPlayer.pause();
-        state.historyPlayer = null;
-        row.classList.remove('playing');
-        play.textContent = '▶';
-        return;
-      }
-      if (state.historyPlayer) state.historyPlayer.pause();
-      const audio = new Audio(url);
-      state.historyPlayer = audio;
+      const playing = row.classList.contains('playing');
+      // 全部停掉，再决定是否播放这一条（点同一条 = 暂停）
+      stopAudio();
       els.historyList.querySelectorAll('.history-item.playing').forEach((n) => {
         n.classList.remove('playing');
         const p = n.querySelector('.history-play');
         if (p) p.textContent = '▶';
       });
+      if (playing) return;
+      const audio = new Audio(url);
+      state.currentAudio = audio;
       row.classList.add('playing');
       play.textContent = '❚❚';
       audio.addEventListener('ended', () => {
         row.classList.remove('playing');
         play.textContent = '▶';
-        state.historyPlayer = null;
+        if (state.currentAudio === audio) state.currentAudio = null;
       });
       audio.play().catch(() => {});
     });
@@ -1409,6 +1530,8 @@
   if (els.materialClearBtn) els.materialClearBtn.addEventListener('click', clearMaterials);
   // 质检页
   if (els.qcRunBtn) els.qcRunBtn.addEventListener('click', runQc);
+  if (els.qcClearBtn) els.qcClearBtn.addEventListener('click', () => clearQcResult(false));
+  if (els.annClearBtn) els.annClearBtn.addEventListener('click', () => clearAnnResult(false));
   if (els.qcFilter) {
     els.qcFilter.querySelectorAll('.filter-btn').forEach((b) => {
       b.addEventListener('click', () => { state.qcFilter = b.dataset.filter; renderQcList(state.qcFilter); });
@@ -1494,6 +1617,9 @@
   els.voiceSelect.addEventListener('change', () => {
     if (els.voiceSelect.value) {
       localStorage.setItem('abv:voice', els.voiceSelect.value);
+      // 换了模型，之前的质检/标注结果不再对应，清掉
+      clearQcResult(true);
+      clearAnnResult(true);
     }
   });
 

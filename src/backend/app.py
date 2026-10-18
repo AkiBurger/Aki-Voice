@@ -602,6 +602,17 @@ def qc_run():
         raise HTTPException(status_code=500, detail=f"质检失败：{e}")
 
 
+@app.delete("/api/qc/report")
+def qc_clear():
+    """清空质检结果（切模型/换数据时用）。"""
+    try:
+        if qc.REPORT_FILE.exists():
+            qc.REPORT_FILE.unlink()
+    except Exception:
+        pass
+    return {"ok": True}
+
+
 @app.get("/api/qc/report")
 def qc_report():
     """上一次质检报告。"""
@@ -629,10 +640,15 @@ def annotation_save(req: AnnotationSaveRequest):
 # 训练：一键开练（后台跑，界面可看进度）
 # ============================================================
 class TrainStartRequest(BaseModel):
-    epochs_s2: int = 6      # 音色模型轮数
-    epochs_s1: int = 8      # 韵律模型轮数
-    batch_s2: int = 2       # 音色模型批量（8G 显存建议 2）
-    batch_s1: int = 4       # 韵律模型批量
+    epochs_s2: int = 6          # 音色模型轮数
+    epochs_s1: int = 8          # 韵律模型轮数
+    batch_s2: int = 2           # 音色模型批量（8G 显存建议 2）
+    batch_s1: int = 4           # 韵律模型批量
+    save_every_s2: int = 2      # 音色每几轮存一次
+    save_every_s1: int = 4      # 韵律每几轮存一次
+    lr_s2: float = 0.0          # 音色学习率（0 = 用默认）
+    lr_s1: float = 0.0          # 韵律学习率（0 = 用默认）
+    auto_eval: bool = False     # 训完自动评测
 
 
 class ScanSourceRequest(BaseModel):
@@ -706,7 +722,13 @@ def train_start(req: TrainStartRequest):
     e1 = max(1, min(30, int(req.epochs_s1)))
     b2 = max(1, min(8, int(req.batch_s2)))
     b1 = max(1, min(16, int(req.batch_s1)))
-    res = trainer.start(epochs_s2=e2, epochs_s1=e1, batch_s2=b2, batch_s1=b1)
+    res = trainer.start(
+        epochs_s2=e2, epochs_s1=e1, batch_s2=b2, batch_s1=b1,
+        save_every_s2=max(1, int(req.save_every_s2)),
+        save_every_s1=max(1, int(req.save_every_s1)),
+        lr_s2=float(req.lr_s2 or 0), lr_s1=float(req.lr_s1 or 0),
+        auto_eval=bool(req.auto_eval),
+    )
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("message", "启动失败"))
     return res
