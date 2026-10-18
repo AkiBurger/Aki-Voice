@@ -97,7 +97,7 @@ def _convert_one(src: Path, dst: Path) -> bool:
         return False
 
 
-def start_import(path_str: str, max_samples: int = 800) -> dict:
+def start_import(path_str: str, max_samples: int = 0) -> dict:
     """把文件夹里的音频导入成训练用的 wav（后台跑）。"""
     if _state["running"]:
         return {"ok": False, "message": "有任务在跑，等它结束"}
@@ -109,7 +109,7 @@ def start_import(path_str: str, max_samples: int = 800) -> dict:
     files.sort()
     if not files:
         return {"ok": False, "message": "这个文件夹里没有找到音频文件（支持 ogg/wav/flac/mp3 等）"}
-    files = files[: max(1, int(max_samples))]
+    # max_samples <= 0 表示全部导入（默认）\n    if max_samples and int(max_samples) > 0:\n        files = files[: int(max_samples)]
 
     WAV_DIR.mkdir(parents=True, exist_ok=True)
     with _lock:
@@ -257,21 +257,82 @@ def list_materials() -> dict:
     }
 
 
+TRASH_DIR = PROJECT_ROOT / "data" / "_trash"
+
+
 def delete_materials(name: str = "", delete_all: bool = False) -> dict:
-    """删除已导入素材（按文件名或全部）。"""
+    """
+    删除已导入素材（按文件名或全部）。
+    不会真删：移动到 data/_trash/<时间戳>/，可以用 restore_materials 找回。
+    """
     wavs = sorted(WAV_DIR.glob("*.wav")) if WAV_DIR.exists() else []
+    if not delete_all and not name:
+        raise ValueError("要删哪个？")
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    trash = TRASH_DIR / f"material_{stamp}"
+    trash.mkdir(parents=True, exist_ok=True)
+
+    targets = wavs if delete_all else [WAV_DIR / name]
     removed = 0
-    if delete_all:
-        for w in wavs:
-            try:
-                w.unlink()
-                removed += 1
-            except Exception:
-                pass
-    elif name:
-        target = WAV_DIR / name
-        if not target.exists():
-            raise FileNotFoundError(f"找不到文件：{name}")
-        target.unlink()
-        removed = 1
-    return {"ok": True, "removed": removed, "remain": len(list(WAV_DIR.glob("*.wav")))}
+    for w in targets:
+        if not w.exists():
+            if not delete_all:
+                raise FileNotFoundError(f"找不到文件：{name}")
+            continue
+        try:
+            shutil.move(str(w), str(trash / w.name))
+            removed += 1
+        except Exception:
+            pass
+    if removed == 0 and not delete_all:
+        raise FileNotFoundError(f"找不到文件：{name}")
+    return {
+        "ok": True,
+        "removed": removed,
+        "remain": len(list(WAV_DIR.glob("*.wav"))) if WAV_DIR.exists() else 0,
+        "trash": str(trash),
+    }
+
+
+def trash_batches() -> list:
+    """回收站里有哪些批次（最近的在前）。"""
+    if not TRASH_DIR.exists():
+        return []
+    out = []
+    for d in sorted(TRASH_DIR.glob("material_*"), reverse=True):
+        if d.is_dir():
+            out.append({"batch": d.name, "count": len(list(d.glob("*.wav")))})
+    return out
+
+
+def restore_materials(batch: str = "") -> dict:
+    """从回收站恢复素材。batch 留空 = 恢复最近一次。"""
+    batches = [b for b in trash_batches() if b["count"] > 0]
+    if not batches:
+        raise FileNotFoundError("回收站是空的，没有可恢复的素材")
+    target = None
+    if batch:
+        for b in batches:
+            if b["batch"] == batch:
+                target = TRASH_DIR / b["batch"]
+                break
+        if target is None:
+            raise FileNotFoundError(f"找不到这个批次：{batch}")
+    else:
+        target = TRASH_DIR / batches[0]["batch"]
+
+    WAV_DIR.mkdir(parents=True, exist_ok=True)
+    restored = 0
+    for w in target.glob("*.wav"):
+        try:
+            shutil.move(str(w), str(WAV_DIR / w.name))
+            restored += 1
+        except Exception:
+            pass
+    try:
+        if not any(target.iterdir()):
+            target.rmdir()
+    except Exception:
+        pass
+    return {"ok": True, "restored": restored, "remain": len(list(WAV_DIR.glob("*.wav")))}

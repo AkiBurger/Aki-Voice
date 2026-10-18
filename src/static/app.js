@@ -105,7 +105,6 @@
     sourcePath: $('sourcePath'),
     scanBtn: $('scanBtn'),
     scanResult: $('scanResult'),
-    maxSamples: $('maxSamples'),
     importBtn: $('importBtn'),
     prepareBtn: $('prepareBtn'),
     dataBadge: $('dataBadge'),
@@ -120,6 +119,7 @@
     materialList: $('materialList'),
     materialRefreshBtn: $('materialRefreshBtn'),
     materialClearBtn: $('materialClearBtn'),
+    materialRestoreBtn: $('materialRestoreBtn'),
     // 质检页
     qcRunBtn: $('qcRunBtn'),
     qcClearBtn: $('qcClearBtn'),
@@ -515,7 +515,7 @@
   }
 
   async function deleteMaterial(name) {
-    if (!window.confirm('删除这段素材？')) return;
+    if (!window.confirm('删除这段素材？会移到回收站，可以点「↩ 恢复删除」找回。')) return;
     try {
       await api('/api/material/delete', {
         method: 'POST',
@@ -530,7 +530,7 @@
   }
 
   async function clearMaterials() {
-    if (!window.confirm('清空所有已导入素材？这个操作不能撤销（原始文件不受影响）。')) return;
+    if (!window.confirm('清空所有已导入素材？\n素材会移到回收站（不是真删），之后可以点「↩ 恢复删除」找回。')) return;
     try {
       await api('/api/material/delete', {
         method: 'POST',
@@ -541,6 +541,21 @@
       updateDataStatus();
     } catch (e) {
       showError('清空失败', String(e.message || e));
+    }
+  }
+
+  async function restoreMaterials() {
+    try {
+      const res = await api('/api/material/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch: '' }),
+      });
+      showToast(已从回收站恢复  + res.restored +  段素材);
+      loadMaterials();
+      updateDataStatus();
+    } catch (e) {
+      showError('恢复失败', String(e.message || e));
     }
   }
 
@@ -813,15 +828,32 @@
       showError('还没填路径', '先填音频文件夹路径。');
       return;
     }
-    const max = parseInt((els.maxSamples && els.maxSamples.value) || '800', 10);
-    const ok = window.confirm(`导入音频？\n上限 ${max} 段，会转成训练格式（wav 16k 单声道）。\n转换需要一些时间，可以关掉页面让它后台跑。`);
+    // 先扫一下，问用户时能说清楚要导入多少
+    let count = 0;
+    try {
+      const d = await api('/api/data/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      count = d.file_count || 0;
+      els.scanResult.textContent =
+        `找到 ${d.file_count} 个音频文件 · 总时长约 ${d.total_min} 分钟（已导入 ${d.already_imported} 段）`;
+    } catch (e) {
+      /* 扫描失败也继续尝试导入 */
+    }
+    const ok = window.confirm(
+      `导入这个文件夹里的全部音频？${count ? `（共 ${count} 个）` : ''}\n` +
+      `会转成训练格式（wav 16k 单声道），已导入过的会自动跳过。\n` +
+      `每 100 段大约 30 秒，可以关掉页面让它后台跑。`
+    );
     if (!ok) return;
     els.importBtn.disabled = true;
     try {
       await api('/api/data/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, max_samples: max }),
+        body: JSON.stringify({ path, max_samples: 0 }),
       });
       els.dataJob.classList.remove('hidden');
       pollDataJob();
@@ -1555,6 +1587,7 @@
   // 素材页
   if (els.materialRefreshBtn) els.materialRefreshBtn.addEventListener('click', loadMaterials);
   if (els.materialClearBtn) els.materialClearBtn.addEventListener('click', clearMaterials);
+  if (els.materialRestoreBtn) els.materialRestoreBtn.addEventListener('click', restoreMaterials);
   // 质检页
   if (els.qcRunBtn) els.qcRunBtn.addEventListener('click', runQc);
   if (els.qcClearBtn) els.qcClearBtn.addEventListener('click', () => clearQcResult(false));

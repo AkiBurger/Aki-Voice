@@ -565,6 +565,10 @@ class MaterialDeleteRequest(BaseModel):
     all: bool = False
 
 
+class MaterialRestoreRequest(BaseModel):
+    batch: str = ""     # 留空 = 恢复最近一次删除
+
+
 class AnnotationSaveRequest(BaseModel):
     wav: str
     text: str
@@ -583,6 +587,21 @@ def dialog_folder():
 def material_list():
     """已导入的素材列表。"""
     return data_prep.list_materials()
+
+
+@app.post("/api/material/restore")
+def material_restore(req: MaterialRestoreRequest):
+    """从回收站恢复素材。"""
+    try:
+        return data_prep.restore_materials(req.batch)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/api/material/trash")
+def material_trash():
+    """回收站批次列表。"""
+    return {"batches": data_prep.trash_batches()}
 
 
 @app.get("/api/material/audio")
@@ -667,7 +686,7 @@ class ScanSourceRequest(BaseModel):
 
 class ImportSourceRequest(BaseModel):
     path: str
-    max_samples: int = 800
+    max_samples: int = 0      # 0 = 全部导入
 
 
 @app.get("/api/data/status")

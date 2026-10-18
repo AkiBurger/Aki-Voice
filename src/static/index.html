@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AkiBurger Voice · 合成台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2314161a'/><text x='50' y='68' font-size='48' text-anchor='middle' fill='%234a9eff' font-family='sans-serif' font-weight='bold'>A</text></svg>">
-<link rel="stylesheet" href="styles.css?v=20261018q">
+<link rel="stylesheet" href="styles.css?v=20261018s">
 </head>
 <body>
 
@@ -255,7 +255,7 @@
     </div>
     <div class="train-note">
       三步：<b>选文件夹 → 导入音频 → 识别 + 清洗</b>。做完这三步才能训练。<br>
-      音频格式支持 ogg / wav / flac / mp3 等，导入时会自动转成训练要的 wav。
+      音频格式支持 ogg / wav / flac / mp3 等，选中的文件夹会全部导入并自动转成训练要的 wav（已导入的会跳过）。
     </div>
     <div class="data-row">
       <button type="button" id="browseBtn" class="btn-secondary btn-sm">📂 浏览…</button>
@@ -266,10 +266,7 @@
     <div class="data-hint" id="browseHint"></div>
     <div class="data-scan-result" id="scanResult">还没扫描。填好路径后点「扫描」看看有多少素材。</div>
     <div class="data-row">
-      <label class="train-param">导入条数上限
-        <input id="maxSamples" type="number" value="800" min="10" max="8000">
-      </label>
-      <button type="button" id="importBtn" class="btn-secondary btn-sm">① 导入音频</button>
+      <button type="button" id="importBtn" class="btn-secondary btn-sm">① 导入全部音频</button>
       <button type="button" id="prepareBtn" class="btn-secondary btn-sm">② 识别 + 清洗</button>
     </div>
     <div id="dataJob" class="data-job hidden">
@@ -283,6 +280,7 @@
     <div class="history-head">
       <div class="field-label" style="margin:0;border:0;padding:0;">已导入的素材</div>
       <div class="material-actions">
+        <button type="button" id="materialRestoreBtn" class="btn-secondary btn-sm" title="从回收站找回上次删掉的素材">↩ 恢复删除</button>
         <button type="button" id="materialRefreshBtn" class="btn-secondary btn-sm">刷新</button>
         <button type="button" id="materialClearBtn" class="btn-danger-link">🗑 全部清空</button>
       </div>
@@ -483,6 +481,6 @@
   <span id="footEngine">引擎状态未知</span>
 </footer>
 
-<script src="app.js?v=20261018q"></script>
+<script src="app.js?v=20261018s"></script>
 </body>
 </html>
