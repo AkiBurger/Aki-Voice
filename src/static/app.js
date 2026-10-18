@@ -84,6 +84,18 @@
     tempValue: $('tempValue'),
     seedInput: $('seedInput'),
     rerollBtn: $('rerollBtn'),
+    // 评测
+    evalBtn: $('evalBtn'),
+    evalProgress: $('evalProgress'),
+    evalProgressText: $('evalProgressText'),
+    evalResult: $('evalResult'),
+    evalScore: $('evalScore'),
+    evalLevel: $('evalLevel'),
+    evalModel: $('evalModel'),
+    evalLangs: $('evalLangs'),
+    evalDetails: $('evalDetails'),
+    evalHistory: $('evalHistory'),
+    evalHistoryEmpty: $('evalHistoryEmpty'),
   };
 
   // ---------- 工具 ----------
@@ -119,6 +131,7 @@
     els.synthBtn.disabled = !up;
     els.batchToggleBtn.disabled = !up;
     els.previewBtn.disabled = !up;
+    if (els.evalBtn) els.evalBtn.disabled = !up;
   }
 
   // ---------- 启动流程：体检 -> 音色 -> 历史 ----------
@@ -128,7 +141,7 @@
       const h = await api('/api/health');
       setEngineUp(Boolean(h.engine_up));
       if (h.engine_up) {
-        await Promise.all([loadVoices(), loadHistory()]);
+        await Promise.all([loadVoices(), loadHistory(), loadEvalHistory()]);
       }
     } catch (e) {
       // 可能是 file:// 直接打开（无后端），或后端未启动
@@ -340,6 +353,105 @@
       els.synthBtn.disabled = !state.engineUp;
       els.synthBtn.querySelector('.btn-label').textContent = '🔊 合成';
       els.synthProgress.classList.add('hidden');
+    }
+  }
+
+  // ---------- 评测打分 ----------
+  const LANG_LABEL = { ja: '日文', zh: '中文', en: '英文' };
+
+  async function runEvaluation() {
+    if (!els.evalBtn) return;
+    els.evalBtn.disabled = true;
+    els.evalBtn.textContent = '评测中…';
+    els.evalProgress.classList.remove('hidden');
+    if (els.evalResult) els.evalResult.classList.add('hidden');
+    els.evalProgressText.textContent = '正在合成测试句并打分，约 1.5 分钟…';
+    try {
+      const res = await api('/api/evaluate', { method: 'POST' });
+      if (!res || !res.ok || !res.result) throw new Error('评测没有返回结果');
+      renderEvalResult(res.result);
+      await loadEvalHistory();
+    } catch (e) {
+      showError('评测失败', String(e.message || e));
+    } finally {
+      els.evalProgress.classList.add('hidden');
+      els.evalBtn.textContent = '开始评测';
+      els.evalBtn.disabled = !state.engineUp;
+    }
+  }
+
+  function renderEvalResult(r) {
+    if (!els.evalResult) return;
+    els.evalResult.classList.remove('hidden');
+    els.evalScore.textContent = r.overall != null ? r.overall.toFixed(3) : '—';
+    els.evalLevel.textContent = r.level || '—';
+    els.evalLevel.className = 'eval-level ' + evalLevelClass(r.level);
+    els.evalModel.textContent = '当前模型：' + (r.model || '默认');
+
+    // 分语言小分
+    els.evalLangs.innerHTML = '';
+    for (const [lang, v] of Object.entries(r.by_lang || {})) {
+      const d = document.createElement('span');
+      d.className = 'eval-lang-chip';
+      d.textContent = (LANG_LABEL[lang] || lang) + ' ' + (v.avg != null ? v.avg.toFixed(2) : '—') + `（${v.count}句）`;
+      els.evalLangs.appendChild(d);
+    }
+
+    // 每句明细（可播放）
+    els.evalDetails.innerHTML = '';
+    for (const item of r.details || []) {
+      const row = document.createElement('div');
+      row.className = 'eval-detail-row';
+      const play = document.createElement('span');
+      play.className = 'history-play';
+      play.textContent = '▶';
+      play.title = '播放';
+      const txt = document.createElement('span');
+      txt.className = 'eval-detail-text';
+      txt.textContent = `[${LANG_LABEL[item.lang] || item.lang}] ${item.text}`;
+      const score = document.createElement('span');
+      score.className = 'eval-detail-score';
+      score.textContent = item.score != null ? item.score.toFixed(3) : '—';
+      row.append(play, txt, score);
+      if (item.audio_url) {
+        row.addEventListener('click', () => {
+          if (state.historyPlayer) state.historyPlayer.pause();
+          const a = new Audio(item.audio_url);
+          state.historyPlayer = a;
+          a.play().catch(() => {});
+        });
+      }
+      els.evalDetails.appendChild(row);
+    }
+  }
+
+  function evalLevelClass(level) {
+    if (!level) return '';
+    if (level.indexOf('很像') >= 0) return 'lv-good';
+    if (level.indexOf('不像') >= 0) return 'lv-bad';
+    if (level.indexOf('像') >= 0) return 'lv-ok';
+    return 'lv-mid';
+  }
+
+  async function loadEvalHistory() {
+    if (!els.evalHistory) return;
+    try {
+      const res = await api('/api/evaluations');
+      const list = (res && res.evaluations) || [];
+      els.evalHistory.querySelectorAll('.eval-history-item').forEach((n) => n.remove());
+      els.evalHistoryEmpty.hidden = list.length > 0;
+      for (const e of list) {
+        const row = document.createElement('div');
+        row.className = 'eval-history-item';
+        row.innerHTML =
+          '<span class="eval-h-score">' + (e.overall != null ? e.overall.toFixed(3) : '—') + '</span>' +
+          '<span class="eval-h-level">' + (e.level || '') + '</span>' +
+          '<span class="eval-h-model">' + (e.model || '') + '</span>' +
+          '<span class="eval-h-time">' + formatTime(e.created_at || e.time) + '</span>';
+        els.evalHistory.appendChild(row);
+      }
+    } catch (e) {
+      /* 历史加载失败不影响主流程 */
     }
   }
 
@@ -752,6 +864,7 @@
   els.previewBtn.addEventListener('click', previewVoice);
   els.savePresetBtn.addEventListener('click', saveCurrentPreset);
   if (els.renameModelBtn) els.renameModelBtn.addEventListener('click', renameCurrentModel);
+  if (els.evalBtn) els.evalBtn.addEventListener('click', runEvaluation);
 
   // ---------- 音质微调 ----------
   if (els.advToggleBtn) {

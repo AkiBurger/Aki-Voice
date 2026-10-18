@@ -35,10 +35,10 @@
   <div class="flow-step future"><span class="flow-dot">○</span>质检</div>
   <div class="flow-step future"><span class="flow-dot">○</span>标注</div>
   <div class="flow-step future"><span class="flow-dot">○</span>训练</div>
-  <div class="flow-step future"><span class="flow-dot">○</span>评测</div>
+  <div class="flow-step done"><span class="flow-dot">◉</span>评测</div>
   <div class="flow-step current"><span class="flow-dot">●</span>合成</div>
 </nav>
-<div class="flowbar-note">素材 → 质检 → 标注 → 训练 → 评测 → 合成　·　当前版本只开放「合成」，其余功能即将上线</div>
+<div class="flowbar-note">素材 → 质检 → 标注 → 训练 → 评测 → 合成　·　当前已开放「评测」「合成」，其余功能即将上线</div>
 
 <main class="workspace">
 
@@ -216,6 +216,42 @@
     <div class="notice-body">
       <div class="notice-title" id="errorTitle">合成失败</div>
       <div class="notice-desc" id="errorDesc"></div>
+    </div>
+  </section>
+
+  <!-- ===== 评测打分 ===== -->
+  <section class="card" id="evalSection">
+    <div class="history-head">
+      <div class="field-label" style="margin:0;border:0;padding:0;">📊 评测打分</div>
+      <button type="button" id="evalBtn" class="btn-secondary btn-sm" disabled>开始评测</button>
+    </div>
+    <div class="eval-note">
+      用声纹模型客观测量"像不像"：自动合成 11 句测试台词（5 句日文 + 3 句中文 + 3 句英文），
+      跟参考音频比声纹相似度。约 1.5 分钟，不影响你正常使用。
+    </div>
+
+    <div id="evalProgress" class="eval-progress hidden">
+      <span class="spinner" aria-hidden="true"></span>
+      <span id="evalProgressText">正在评测…</span>
+    </div>
+
+    <div id="evalResult" class="eval-result hidden">
+      <div class="eval-score-row">
+        <div class="eval-score-big" id="evalScore">—</div>
+        <div class="eval-score-side">
+          <div class="eval-level" id="evalLevel">—</div>
+          <div class="eval-model" id="evalModel"></div>
+        </div>
+      </div>
+      <div class="eval-langs" id="evalLangs"></div>
+      <div class="eval-details" id="evalDetails"></div>
+    </div>
+
+    <div class="eval-history-wrap">
+      <div class="field-label" style="margin-top:12px">历史评测</div>
+      <div id="evalHistory" class="eval-history">
+        <div class="eval-history-empty" id="evalHistoryEmpty">还没有评测记录。点「开始评测」跑第一次。</div>
+      </div>
     </div>
   </section>
 

@@ -35,6 +35,8 @@ from emotion import judge_tone, TONES
 from text_split import estimate_seconds, split_sentences
 from translate import TranslateError, is_translator_up, translate, translate_with_engine
 
+import evaluate as evaluator   # 声纹打分（评测用）
+
 # ---------- 路径 ----------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # voice-studio/
 DATA_DIR = PROJECT_ROOT / "data"
@@ -518,9 +520,182 @@ def serve_info():
     """静态托管状态（前端页面 + 合成产物都挂在 /static 下）。"""
     return {
         "mounted": True,
-        "frontend": "/static -> src/static",
+        "frontend": "/static -> /src/static",
         "output": "/static/output -> outputs",
     }
+
+
+# ============================================================
+# 评测：用声纹模型给"像不像"打分
+# ============================================================
+EVAL_DIR = OUTPUT_DIR / "_eval"              # 评测产物放这里（不影响合成历史）
+EVAL_HISTORY = DATA_DIR / "evaluations.json"  # 评测历史记录
+
+# 固定的测试句（跨语言用）
+CROSS_LANG_TESTS = {
+    "zh": [
+        "你好，今天过得怎么样？",
+        "我一直在这里等你回来。",
+        "这种事情，我绝对不会原谅。",
+    ],
+    "en": [
+        "Good morning. How are you today?",
+        "I have been waiting for you all this time.",
+        "I will never forgive you for this.",
+    ],
+}
+
+
+def _sample_ja_tests(n: int = 5) -> list:
+    """从训练数据里挑测试句（本人语言）。挑长度适中的，避免太短。"""
+    clean_list = DATA_DIR / "setsuna" / "setsuna_clean.list"
+    texts = []
+    try:
+        for line in clean_list.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            parts = line.split("|")
+            if len(parts) != 4:
+                continue
+            t = parts[3].strip()
+            if 8 <= len(t) <= 30:
+                texts.append(t)
+    except Exception:
+        pass
+    if not texts:
+        # 兜底：固定句子
+        texts = ["おはよう。今日もいい天気だね。", "ずっと、あなたのことが好きだったの。"]
+    # 均匀抽样，保证稳定（同一批测试句方便多次对比）
+    step = max(1, len(texts) // n)
+    picked = texts[::step][:n]
+    return picked
+
+
+def _load_eval_history() -> list:
+    try:
+        if EVAL_HISTORY.exists():
+            return json.loads(EVAL_HISTORY.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return []
+
+
+def _save_eval_history(items: list) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    EVAL_HISTORY.write_text(json.dumps(items[-50:], ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _eval_one_sentence(text: str, lang: str, ref_path: str) -> dict:
+    """合成一句并打分。"""
+    wav_bytes = synthesize(
+        text=text,
+        text_lang=lang,
+        ref_audio_path=ref_path,
+        prompt_lang="ja",
+        prompt_text=ref_prompt_text(ref_path),
+        speed_factor=1.0,
+    )
+    return wav_bytes
+
+
+@app.get("/api/evaluate/tests")
+def evaluate_tests():
+    """当前使用的测试句（前端展示用）。"""
+    return {
+        "ja": _sample_ja_tests(5),
+        "cross": CROSS_LANG_TESTS,
+    }
+
+
+@app.post("/api/evaluate")
+def run_evaluate():
+    """
+    跑一次评测：用当前模型合成测试句，跟参考音频比声纹相似度。
+    返回每句得分 + 分语言平均分 + 总评。
+    """
+    if not evaluator.is_available():
+        raise HTTPException(status_code=503, detail="声纹模型不可用，没法打分")
+
+    ref = default_ref_file()
+    if ref is None:
+        raise HTTPException(status_code=400, detail="没有参考音频，没法打分")
+    ref = str(ref)
+
+    ms = list_models()
+    model_name = ms[0]["name"] if ms else "默认"
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    job_dir = EVAL_DIR / stamp
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    # 测试句：本人语言（日文）用训练数据里的句子；另外测中文、英文（跨语言）
+    test_sets = {"ja": _sample_ja_tests(5)}
+    test_sets.update(CROSS_LANG_TESTS)
+
+    try:
+        ref_emb = evaluator.embedding(ref)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"参考音频打不开：{e}")
+
+    details = []
+    scores_by_lang = {}
+    idx = 0
+    for lang, texts in test_sets.items():
+        for t in texts:
+            idx += 1
+            try:
+                wav_bytes = _eval_one_sentence(t, lang, ref)
+            except EngineError as e:
+                raise HTTPException(status_code=503, detail=str(e))
+            wav_path = job_dir / f"{idx:02d}_{lang}.wav"
+            wav_path.write_bytes(wav_bytes)
+            try:
+                emb = evaluator.embedding(str(wav_path))
+                score = evaluator.cosine(ref_emb, emb)
+            except Exception:
+                score = None
+            item = {
+                "index": idx,
+                "lang": lang,
+                "text": t,
+                "score": round(score, 4) if score is not None else None,
+                "level": evaluator.level_of(score) if score is not None else "无法评分",
+                "audio_url": f"/static/output/_eval/{stamp}/{wav_path.name}",
+            }
+            details.append(item)
+            if score is not None:
+                scores_by_lang.setdefault(lang, []).append(score)
+
+    def avg(xs):
+        return round(sum(xs) / len(xs), 4) if xs else None
+
+    summary = {lang: {"avg": avg(v), "count": len(v)} for lang, v in scores_by_lang.items()}
+    main_avg = summary.get("ja", {}).get("avg")
+    overall = avg([s for v in scores_by_lang.values() for s in v])
+
+    record = {
+        "time": stamp,
+        "model": model_name,
+        "overall": overall,
+        "level": evaluator.level_of(overall) if overall is not None else "无",
+        "main": main_avg,
+        "by_lang": summary,
+        "details": details,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+    hist = _load_eval_history()
+    hist.append(record)
+    _save_eval_history(hist)
+
+    return {"ok": True, "result": record}
+
+
+@app.get("/api/evaluations")
+def list_evaluations():
+    """评测历史（最近的在前）。"""
+    hist = _load_eval_history()
+    return {"evaluations": list(reversed(hist[-20:]))}
 
 
 if __name__ == "__main__":
