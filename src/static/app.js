@@ -23,6 +23,8 @@
     engineUp: false,
     historyPlayer: null,      // 正在播放历史的 <audio>
     currentHistoryUrl: null,
+    temperature: 0.9,         // 音质微调：越低越稳
+    seed: -1,                 // -1 = 每次随机
   };
 
   // ---------- 元素 ----------
@@ -56,6 +58,7 @@
     errorDesc: $('errorDesc'),
     historyList: $('historyList'),
     historyEmpty: $('historyEmpty'),
+    clearHistoryBtn: $('clearHistoryBtn'),
     footEngine: $('footEngine'),
     savePresetBtn: $('savePresetBtn'),
     presetList: $('presetList'),
@@ -68,6 +71,13 @@
     batchStartBtn: $('batchStartBtn'),
     batchStopBtn: $('batchStopBtn'),
     batchResults: $('batchResults'),
+    // 音质微调
+    advToggleBtn: $('advToggleBtn'),
+    advPanel: $('advPanel'),
+    tempRange: $('tempRange'),
+    tempValue: $('tempValue'),
+    seedInput: $('seedInput'),
+    rerollBtn: $('rerollBtn'),
   };
 
   // ---------- 工具 ----------
@@ -258,10 +268,18 @@
       const res = await api('/api/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, lang: state.lang, voice, tone: state.tone }),
+        body: JSON.stringify({
+          text, lang: state.lang, voice, tone: state.tone,
+          seed: state.seed, temperature: state.temperature,
+        }),
       });
       const elapsed = Math.round(performance.now() - t0);
       if (!res || !res.ok || !res.audio_url) throw new Error(res && res.message ? res.message : '后端没有返回音频');
+
+      // 随机模式下，把这次实际用的种子显示出来，方便复现
+      if (els.seedInput && res.seed !== undefined && res.seed !== -1) {
+        els.seedInput.value = res.seed;
+      }
 
       state.currentAudioUrl = res.audio_url;
       els.resultAudio.src = res.audio_url;
@@ -514,6 +532,8 @@
   function renderHistory(list) {
     els.historyEmpty.hidden = list.length > 0;
     els.historyList.querySelectorAll('.history-item').forEach((n) => n.remove());
+    // 「清空历史」按钮：有记录时才显示
+    if (els.clearHistoryBtn) els.clearHistoryBtn.hidden = list.length === 0;
     for (const item of list) {
       els.historyList.appendChild(buildHistoryItem(item));
     }
@@ -553,7 +573,29 @@
     if (!item.audio_url) dl.classList.add('hidden');
     dl.setAttribute('download', '');
 
-    row.append(play, body, dl);
+    // 删除这一条
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'history-del';
+    del.textContent = '🗑';
+    del.title = '删除这条记录';
+    del.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = window.confirm('删除这条记录？音频文件也会一起删掉。');
+      if (!ok) return;
+      del.disabled = true;
+      try {
+        await api('/api/history/' + encodeURIComponent(item.time), { method: 'DELETE' });
+        row.remove();
+        if (!els.historyList.querySelector('.history-item')) els.historyEmpty.hidden = false;
+        if (els.clearHistoryBtn && !els.historyList.querySelector('.history-item')) els.clearHistoryBtn.hidden = true;
+      } catch (err) {
+        del.disabled = false;
+        showError('删除失败', String(err.message || err));
+      }
+    });
+
+    row.append(play, body, dl, del);
 
     const url = item.audio_url;
     row.addEventListener('click', (e) => {
@@ -639,6 +681,54 @@
   els.retryBtn.addEventListener('click', boot);
   els.previewBtn.addEventListener('click', previewVoice);
   els.savePresetBtn.addEventListener('click', saveCurrentPreset);
+
+  // ---------- 音质微调 ----------
+  if (els.advToggleBtn) {
+    els.advToggleBtn.addEventListener('click', () => {
+      const hidden = els.advPanel.classList.toggle('hidden');
+      els.advToggleBtn.textContent = (hidden ? '▶' : '▼') + ' 音质微调（合成不满意时用）';
+    });
+  }
+  if (els.tempRange) {
+    els.tempRange.addEventListener('input', () => {
+      state.temperature = parseFloat(els.tempRange.value);
+      els.tempValue.textContent = state.temperature.toFixed(2);
+    });
+    state.temperature = parseFloat(els.tempRange.value);
+    els.tempValue.textContent = state.temperature.toFixed(2);
+  }
+  if (els.seedInput) {
+    els.seedInput.addEventListener('change', () => {
+      const v = parseInt(els.seedInput.value, 10);
+      state.seed = isNaN(v) ? -1 : v;
+    });
+  }
+  if (els.rerollBtn) {
+    els.rerollBtn.addEventListener('click', () => {
+      const s = Math.floor(Math.random() * 2147483000);
+      els.seedInput.value = s;
+      state.seed = s;
+      // 换种子后直接重合成
+      synthesize();
+    });
+  }
+
+  // 清空全部历史
+  if (els.clearHistoryBtn) {
+    els.clearHistoryBtn.addEventListener('click', async () => {
+      const ok = window.confirm('清空全部历史记录？所有合成音频都会被删除，无法恢复。');
+      if (!ok) return;
+      els.clearHistoryBtn.disabled = true;
+      try {
+        await api('/api/history', { method: 'DELETE' });
+        renderHistory([]);
+      } catch (err) {
+        showError('清空失败', String(err.message || err));
+      } finally {
+        els.clearHistoryBtn.disabled = false;
+      }
+    });
+  }
 
   els.batchToggleBtn.addEventListener('click', () => {
     els.batchPanel.classList.toggle('hidden');

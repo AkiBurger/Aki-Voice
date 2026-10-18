@@ -629,6 +629,96 @@ body {
 }
 .history-dl:hover { border-color: var(--text-dim); color: var(--text); }
 
+/* 历史区标题行 + 清空按钮 */
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.btn-danger-link {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-dim);
+  padding: var(--s1) var(--s3);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-danger-link:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn-danger-link:disabled { opacity: 0.5; cursor: default; }
+
+/* 单条删除按钮 */
+.history-del {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-dim);
+  padding: var(--s1) var(--s2);
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.2;
+  transition: border-color 0.15s, color 0.15s;
+}
+.history-del:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.history-del:disabled { opacity: 0.5; cursor: default; }
+
+/* ============ 音质微调 ============ */
+.adv-head { display: flex; align-items: center; }
+
+.adv-toggle {
+  background: transparent;
+  border: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-dim);
+  font-family: inherit;
+  cursor: pointer;
+  padding: var(--s1) 0;
+  text-align: left;
+}
+.adv-toggle:hover { color: var(--text); }
+
+.adv-panel { margin-top: var(--s2); display: flex; flex-direction: column; gap: var(--s2); }
+
+.adv-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.adv-label { width: 72px; color: var(--text-dim); font-size: var(--fs-dim); flex-shrink: 0; }
+
+.adv-row input[type="range"] { flex: 1; accent-color: var(--primary); }
+
+.adv-val { width: 42px; text-align: right; font-variant-numeric: tabular-nums; font-size: var(--fs-dim); }
+
+.adv-seed {
+  flex: 1;
+  max-width: 170px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-dim);
+  padding: var(--s1) var(--s2);
+}
+
+.btn-mini { padding: var(--s1) var(--s3); font-size: var(--fs-dim); }
+
+.adv-note { color: var(--text-dim); font-size: 12px; padding-left: 72px; opacity: 0.85; }
+
 /* ============ 页脚 ============ */
 .foot {
   border-top: 1px solid var(--border);

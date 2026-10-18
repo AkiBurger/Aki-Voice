@@ -61,6 +61,9 @@ class SynthesizeRequest(BaseModel):
     voice: str                          # 参考音频文件名（如 setsuna_03）
     tone: str = "自动"                  # 平静|开心|悲伤|生气|惊讶|害怕|自动
     speed: float = 1.0
+    seed: int = -1                      # -1 随机；指定数字则结果可复现
+    temperature: float = 1.0            # 越低越稳（0.7~1.0 常用）
+    top_k: int = 15
 
 
 # ---------- 工具 ----------
@@ -214,6 +217,9 @@ def synthesize_text(req: SynthesizeRequest):
                 prompt_lang=lang,
                 prompt_text=ref_prompt_text(ref_path),
                 speed_factor=req.speed,
+                seed=req.seed,
+                temperature=req.temperature,
+                top_k=req.top_k,
             )
         except EngineError as e:
             # 半路失败：把已经生成的段清掉，报人话
@@ -244,6 +250,10 @@ def synthesize_text(req: SynthesizeRequest):
         "segments": len(segments),
         "elapsed_ms": int((time.time() - started) * 1000),
         "est_seconds": estimate_seconds(text),
+        "seed": req.seed,
+        "temperature": req.temperature,
+        "top_k": req.top_k,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
     }
     (job_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -254,6 +264,8 @@ def synthesize_text(req: SynthesizeRequest):
         "tone": tone,
         "tone_auto": tone_auto,
         "elapsed_ms": meta["elapsed_ms"],
+        "seed": req.seed,
+        "created_at": meta["created_at"],
     }
 
 
@@ -281,10 +293,48 @@ def history():
                 "tone": meta.get("tone", ""),
                 "audio_url": f"/static/output/{job_dir.name}/full.wav" if full.exists() else None,
                 "elapsed_ms": meta.get("elapsed_ms", 0),
+                "seed": meta.get("seed", -1),
+                "created_at": meta.get("created_at", ""),
             })
             if len(items) >= 20:
                 break
     return {"history": items}
+
+
+def _safe_job_dir(stamp: str) -> Path:
+    """校验历史条目名，防止路径穿越（只能删 outputs 下的一级目录）。"""
+    name = (stamp or "").strip().replace("\\", "/")
+    if not name or "/" in name or ".." in name:
+        raise HTTPException(status_code=400, detail="历史记录名不合法")
+    target = (OUTPUT_DIR / name).resolve()
+    if OUTPUT_DIR.resolve() not in target.parents:
+        raise HTTPException(status_code=400, detail="历史记录名不合法")
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail="这条历史记录不存在（可能已删除）")
+    return target
+
+
+@app.delete("/api/history/{stamp}")
+def delete_history_item(stamp: str):
+    """删除一条合成历史（连同它的音频文件一起删）。"""
+    target = _safe_job_dir(stamp)
+    shutil.rmtree(target, ignore_errors=True)
+    if target.exists():
+        raise HTTPException(status_code=500, detail="删除失败，文件可能正被占用")
+    return {"ok": True, "deleted": stamp}
+
+
+@app.delete("/api/history")
+def clear_history():
+    """清空全部合成历史。"""
+    count = 0
+    if OUTPUT_DIR.exists():
+        for job_dir in list(OUTPUT_DIR.iterdir()):
+            if job_dir.is_dir():
+                shutil.rmtree(job_dir, ignore_errors=True)
+                if not job_dir.exists():
+                    count += 1
+    return {"ok": True, "deleted_count": count}
 
 
 @app.post("/api/serve")

@@ -37,7 +37,8 @@ def is_engine_up(timeout: float = 2.0) -> bool:
 
 def synthesize(text: str, text_lang: str, ref_audio_path: str,
                prompt_lang: Optional[str] = None, prompt_text: str = "",
-               speed_factor: float = 1.0) -> bytes:
+               speed_factor: float = 1.0,
+               seed: int = -1, temperature: float = 1.0, top_k: int = 15) -> bytes:
     """
     调引擎合成一段语音，返回 wav 字节。
 
@@ -48,6 +49,9 @@ def synthesize(text: str, text_lang: str, ref_audio_path: str,
         prompt_lang: 参考音频的语言（留空就用 text_lang）
         prompt_text: 参考音频的文本（可留空）
         speed_factor: 语速，1.0 正常
+        seed: -1 随机；固定数字则结果可复现（重试换一个数字即可换结果）
+        temperature: 采样温度，越低越稳（0.7~1.0 常用）
+        top_k: 采样范围，越小越稳
 
     返回:
         wav 文件字节
@@ -58,14 +62,14 @@ def synthesize(text: str, text_lang: str, ref_audio_path: str,
         "ref_audio_path": ref_audio_path,
         "prompt_lang": prompt_lang or text_lang,
         "prompt_text": prompt_text,
-        "top_k": 15,
+        "top_k": int(top_k),
         "top_p": 1,
-        "temperature": 1,
+        "temperature": float(temperature),
         "text_split_method": "cut5",
         "batch_size": 1,
         "speed_factor": speed_factor,
         "fragment_interval": 0.3,
-        "seed": -1,
+        "seed": int(seed),
         "media_type": "wav",
         "streaming_mode": 0,
         "parallel_infer": True,

@@ -109,6 +109,28 @@
     </div>
   </section>
 
+  <!-- ===== 音质微调（默认收起）===== -->
+  <section class="card">
+    <div class="adv-head">
+      <button type="button" id="advToggleBtn" class="adv-toggle">▶ 音质微调（合成不满意时用）</button>
+    </div>
+    <div id="advPanel" class="adv-panel hidden">
+      <div class="adv-row">
+        <label class="adv-label" for="tempRange">稳定度</label>
+        <input type="range" id="tempRange" min="0.5" max="1.2" step="0.05" value="0.9">
+        <span id="tempValue" class="adv-val">0.90</span>
+      </div>
+      <div class="adv-note">数值越低越稳（不容易翻车），越高越有起伏。效果不好时先试 0.8~0.9。</div>
+
+      <div class="adv-row">
+        <label class="adv-label" for="seedInput">随机种子</label>
+        <input type="number" id="seedInput" class="adv-seed" value="-1" min="-1" max="2147483647">
+        <button type="button" id="rerollBtn" class="btn-secondary btn-mini">🎲 换一个</button>
+      </div>
+      <div class="adv-note">-1 = 每次随机。填固定数字 = 结果可复现（找到满意的那次就把数字记下来）。</div>
+    </div>
+  </section>
+
   <!-- ===== 合成按钮 ===== -->
   <section class="actions">
     <button type="button" id="synthBtn" class="btn-primary" disabled>
@@ -180,7 +202,10 @@
 
   <!-- ===== 历史 ===== -->
   <section class="card">
-    <div class="field-label">历史记录</div>
+    <div class="history-head">
+      <div class="field-label" style="margin:0;border:0;padding:0;">历史记录</div>
+      <button type="button" id="clearHistoryBtn" class="btn-danger-link" hidden>🗑 清空历史</button>
+    </div>
     <div id="historyList" class="history-list">
       <div class="history-empty" id="historyEmpty">还没有合成记录。合成的音频会出现在这里。</div>
     </div>
