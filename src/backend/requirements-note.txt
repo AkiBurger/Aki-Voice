@@ -1,33 +1,75 @@
-# 后端运行依赖说明
+# 后端运行依赖说明（2026-10 更新）
 
-后端**不新建虚拟环境**，直接用 GPT-SoVITS 自带的 venv 运行：
+后端不强制新建虚拟环境。作者本机的运行方式是**直接复用 GPT-SoVITS 自带的 venv**：
 
-```
-D:\Dev\ai\02_GPT-SoVITS_配音\.venv\Scripts\python.exe
-```
+    D:\Dev\ai\02_GPT-SoVITS_配音\.venv\Scripts\python.exe
 
-该环境实测已包含（版本见括号）：
+（`launcher/launcher.cs` 启动后端时用的也是这个 venv 的 python.exe。）
 
-- fastapi   (0.115.0)
-- uvicorn   (0.50.1)
-- requests  (2.34.2)
+想自建环境也可以：Python >= 3.10，然后
 
-其他模块全部用 Python 标准库（wave / struct / json / pathlib），无额外依赖。
+    pip install -r requirements.txt
+
+但要注意：torch / transformers 的版本要跟随 GPT-SoVITS 的 venv，
+否则和引擎的 CUDA 环境对不上，会出现"引擎能跑、后端评测/翻译崩"或反过来。
+
+## 后端实际用到的第三方依赖（读源码汇总，按模块）
+
+| 依赖 | 用在哪 | 用途 |
+|---|---|---|
+| fastapi | app.py | Web 框架 + 静态托管 |
+| uvicorn | app.py | ASGI 服务器，监听 127.0.0.1:8017 |
+| pydantic | app.py | 请求体模型（fastapi 自带依赖） |
+| requests | engine.py、translate.py、trainer.py、selftest.py | 调 GPT-SoVITS 9880 和 Ollama 11434 |
+| numpy | qc.py、evaluate.py | 音量/静音/削波计算、声纹向量 |
+| soundfile | qc.py、annotate.py、data_prep.py、trainer.py、evaluate.py | 读 wav、读时长 |
+| librosa | evaluate.py | 重采样到 16kHz |
+| torch | evaluate.py、translate_local.py | 声纹模型推理、内置翻译模型推理 |
+| transformers | translate_local.py | MarianMT 中→日翻译 |
+| sacremoses | 经 transformers 的 Marian 分词器调用 | 标点规范化（缺失会警告） |
+| sentencepiece | 经 transformers 的 Marian 分词器调用 | 分词必需 |
+| pysbd | text_split.py | 智能分句；缺失时自动退回正则切句 |
+| pyyaml | data/setsuna/train.py | 读 GPT-SoVITS 的 s1 YAML 配置 |
+
+不属于 pip 包、但运行时会用到的：
+
+- **ERes2NetV2 声纹模型 + kaldi（fbank）**：来自 GPT-SoVITS 源码
+  （`GPT_SoVITS/eres2net` 和其中的 `kaldi`），`evaluate.py` 运行时把目录加进
+  `sys.path` 后 import，不是 pip 包。
+- **funasr**：训练素材识别（`data/setsuna/batch_asr.py`），跑在 GPT-SoVITS 的 venv 里，
+  不在后端进程内。
+- **ffmpeg**：素材转码（`data_prep.py` 调 ffmpeg.exe）和 GPT-SoVITS 的 load_audio 都要用，
+  需要单独安装（本机在 `D:\Dev\tools\ffmpeg\bin`）。
+- **Ollama**：可选，用于更自然的中→日翻译；不装会自动用内置翻译模型。
+- **内置翻译模型**：约 300MB，落在 `D:\Dev\cache\huggingface\hub\models--shun89--opus-mt-zh-ja`；
+  没有它只影响中→日翻译，其它功能不受影响。
+
+> 旧版本这里写"其他模块全部用标准库"是错的 —— 上面这些第三方依赖一个都不能少。
 
 ## 启动方式
 
-```
-cd D:\Dev\projects\voice-studio
-D:\Dev\ai\02_GPT-SoVITS_配音\.venv\Scripts\python.exe src\backend\app.py
-```
+后端：
 
-监听 http://127.0.0.1:8017
+    cd D:\Dev\projects\voice-studio
+    D:\Dev\ai\02_GPT-SoVITS_配音\.venv\Scripts\python.exe src\backend\app.py
+
+监听 http://127.0.0.1:8017（打开会自动跳转到 /static/index.html）。
 
 ## 前置条件
 
-GPT-SoVITS 引擎服务要先在 9880 端口跑起来：
+GPT-SoVITS 引擎要先在 9880 端口跑起来：
 
-```
-cd D:\Dev\ai\02_GPT-SoVITS_配音\GPT-SoVITS
-.venv\Scripts\python.exe api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer.yaml
-```
+    cd D:\Dev\ai\02_GPT-SoVITS_配音\GPT-SoVITS
+    ..\.venv\Scripts\python.exe api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer.yaml
+
+## 相关环境变量（读源码确认）
+
+| 变量 | 默认值 | 作用 |
+|---|---|---|
+| ABV_ENGINE_URL | http://127.0.0.1:9880 | GPT-SoVITS 引擎地址 |
+| ABV_OLLAMA_URL | http://127.0.0.1:11434 | Ollama 地址 |
+| ABV_OLLAMA_MODEL | qwen3-local:latest | 翻译用的 Ollama 模型 |
+| ABV_TRANSLATE_ENGINE | auto | auto=有 Qwen 用 Qwen，builtin=只用内置模型 |
+| ABV_SOVITS_ROOT | 空（自动探测 `D:\Dev\ai\02_GPT-SoVITS_*`） | evaluate.py 找声纹模型用 |
+| ABV_FROM_SCRATCH | 1（由训练页「从零训练」传入） | 1=备份旧 checkpoint 后从预训练底模重训；0=续训 |
+| ABV_S2_* / ABV_S1_* | 见 train.py | 训练轮数/批量/学习率等，由 trainer.py 启动训练时写入 |

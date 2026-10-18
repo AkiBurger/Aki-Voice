@@ -57,7 +57,7 @@
       <div class="notice-title">声音引擎还没就绪</div>
       <div class="notice-desc" id="engineDownDesc">
         界面已经打开了，但后端服务没连上。<br>
-        试试：启动后端的 <code>backend.py</code>，然后回来点 <button type="button" class="linklike" id="retryBtn">重试连接</button>。
+        试试：启动后端的 <code>app.py</code>，然后回来点 <button type="button" class="linklike" id="retryBtn">重试连接</button>。
       </div>
     </div>
   </section>
@@ -88,7 +88,7 @@
 
   <!-- ===== 台词输入 ===== -->
   <section class="card">
-    <div class="field-label" for="textInput">要念的话</div>
+    <label class="field-label" for="textInput" style="display:block">要念的话</label>
     <textarea id="textInput" class="text-input" rows="7"
       placeholder="在这里输入台词…&#10;&#10;长文案会自动切句再拼接，放心写。"
       spellcheck="false"></textarea>
@@ -167,7 +167,7 @@
 
   <!-- ===== 批量合成面板（默认收起）===== -->
   <section id="batchPanel" class="card hidden">
-    <div class="field-label" for="batchInput">批量合成</div>
+    <label class="field-label" for="batchInput" style="display:block">批量合成</label>
     <div class="batch-note">每行一句，逐句合成。行首可写「语气｜台词」指定这一句的语气，不写就用下面的默认语气。</div>
     <textarea id="batchInput" class="text-input batch-input" rows="6"
       placeholder="第一句台词&#10;第二句台词&#10;开心｜第三句台词"></textarea>
@@ -371,6 +371,9 @@
       <label class="train-param">韵律批量
         <input id="batchS1" type="number" value="4" min="1" max="16">
       </label>
+      <label class="train-param train-check">
+        <input id="fromScratch" type="checkbox" checked> 从零训练
+      </label>
     </div>
     <div class="adv-params">
       <label class="train-param">音色保存间隔
@@ -389,7 +392,7 @@
         <input id="autoEval" type="checkbox"> 训完自动评测
       </label>
     </div>
-    <div class="train-note">轮数越多越像但越慢（音色模型约 2 分钟/轮）。训练期间合成会变慢。<br>训练完成后会自动挂载新权重，并建议跑一次评测。</div>
+    <div class="train-note">轮数越多越像但越慢（音色模型约 2 分钟/轮）。训练期间合成会变慢。<br>「从零训练」会忽略上次训练的中间权重重新开始；取消勾选则在现有权重基础上继续训练。<br>训练完成后会自动挂载新权重，并建议跑一次评测。</div>
     <div class="train-actions">
       <button type="button" id="trainStartBtn" class="btn-secondary">开始训练</button>
       <button type="button" id="trainStopBtn" class="btn-secondary hidden">停止训练</button>

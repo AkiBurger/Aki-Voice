@@ -16,7 +16,9 @@ AkiBurger Voice 后端服务。
 """
 import io
 import json
+import os
 import re
+import threading
 import shutil
 import time
 import wave
@@ -64,6 +66,9 @@ PORT = 8017
 
 app = FastAPI(title="AkiBurger Voice")
 
+_synth_lock = threading.Lock()        # 同一时间只跑一个合成（P2 修复：防并发抢显存）
+_eval_lock = threading.Lock()          # 评测互斥
+
 
 @app.get("/", include_in_schema=False)
 def root_redirect():
@@ -87,6 +92,27 @@ async def no_cache_static(request, call_next):
             if h in response.headers:
                 del response.headers[h]
     return response
+
+
+# ---------- 本机访问守卫（P1 修复：防 CSRF / DNS rebinding）----------
+# 只接受本机 Host；跨站 POST/DELETE 一律拒绝（浏览器发 Origin/Sec-Fetch-Site 时校验）。
+ALLOWED_HOSTS = {"127.0.0.1:8017", "localhost:8017"}
+ALLOWED_ORIGINS = {"http://127.0.0.1:8017", "http://localhost:8017"}
+
+
+@app.middleware("http")
+async def guard_local_only(request, call_next):
+    host = (request.headers.get("host") or "").lower()
+    if host and host not in ALLOWED_HOSTS:
+        return JSONResponse({"detail": "只允许本机访问 127.0.0.1"}, status_code=403)
+    if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        origin = (request.headers.get("origin") or "").rstrip("/")
+        if origin and origin.lower() not in ALLOWED_ORIGINS:
+            return JSONResponse({"detail": "跨站请求被拒绝"}, status_code=403)
+        site = request.headers.get("sec-fetch-site")
+        if site and site not in ("same-origin", "none"):
+            return JSONResponse({"detail": "跨站请求被拒绝"}, status_code=403)
+    return await call_next(request)
 
 
 # ---------- 静态托管（audio_url 能直接播） ----------
@@ -440,7 +466,18 @@ def synthesize_text(req: SynthesizeRequest):
     raw_text = (req.text or "").strip()
     if not raw_text:
         raise HTTPException(status_code=400, detail="文案是空的，先写点东西吧")
+    if len(raw_text) > 5000:
+        raise HTTPException(status_code=400, detail=f"文本太长了（{len(raw_text)} 字），单次最多 5000 字，请分段合成")
+    # 同一时间只跑一个合成，避免并发抢显存（P2 修复）
+    if not _synth_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="正在合成上一段，等它完成再点")
+    try:
+        return _do_synthesize(req, raw_text)
+    finally:
+        _synth_lock.release()
 
+
+def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
     lang = req.lang if req.lang in ("ja", "zh", "en") else "ja"
     input_lang = req.input_lang if req.input_lang in ("ja", "zh", "en") else lang
 
@@ -774,6 +811,7 @@ class TrainStartRequest(BaseModel):
     lr_s2: float = 0.0          # 音色学习率（0 = 用默认）
     lr_s1: float = 0.0          # 韵律学习率（0 = 用默认）
     auto_eval: bool = False     # 训完自动评测
+    from_scratch: bool = True   # 从零训练（False = 在已有进度上续训）
 
 
 class ScanSourceRequest(BaseModel):
@@ -843,17 +881,25 @@ def train_status():
 @app.post("/api/train/start")
 def train_start(req: TrainStartRequest):
     """开始训练（后台跑，不卡界面）。"""
+    # 素材导入/识别还在跑时不允许开训，否则会读到半截数据（P1 修复）
+    if data_prep.is_busy():
+        raise HTTPException(status_code=400, detail="素材导入/识别还在跑，等它结束再开始训练")
     e2 = max(1, min(20, int(req.epochs_s2)))
     e1 = max(1, min(30, int(req.epochs_s1)))
     b2 = max(1, min(8, int(req.batch_s2)))
     b1 = max(1, min(16, int(req.batch_s1)))
-    res = trainer.start(
+    start_kwargs = dict(
         epochs_s2=e2, epochs_s1=e1, batch_s2=b2, batch_s1=b1,
         save_every_s2=max(1, int(req.save_every_s2)),
         save_every_s1=max(1, int(req.save_every_s1)),
         lr_s2=float(req.lr_s2 or 0), lr_s1=float(req.lr_s1 or 0),
         auto_eval=bool(req.auto_eval),
     )
+    # from_scratch 由 trainer.start 支持；并行开发期若还没加参数则自动降级
+    try:
+        res = trainer.start(**start_kwargs, from_scratch=bool(req.from_scratch))
+    except TypeError:
+        res = trainer.start(**start_kwargs)
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("message", "启动失败"))
     return res
@@ -925,7 +971,10 @@ def _load_eval_history() -> list:
 
 def _save_eval_history(items: list) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    EVAL_HISTORY.write_text(json.dumps(items[-50:], ensure_ascii=False, indent=2), encoding="utf-8")
+    # 原子写：先写临时文件再替换，避免写一半崩溃把评测历史清空（P2 修复）
+    tmp = EVAL_HISTORY.with_name(EVAL_HISTORY.name + ".tmp")
+    tmp.write_text(json.dumps(items[-50:], ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, EVAL_HISTORY)
 
 
 def _eval_one_sentence(text: str, lang: str, ref_path: str) -> dict:
@@ -961,7 +1010,16 @@ def run_evaluate():
     """
     if not evaluator.is_available():
         raise HTTPException(status_code=503, detail="声纹模型不可用，没法打分")
+    # 评测互斥：并发评测会重复合成、抢显存（P2 修复）
+    if not _eval_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="已经在评测中，等这次跑完")
+    try:
+        return _do_evaluate()
+    finally:
+        _eval_lock.release()
 
+
+def _do_evaluate():
     ref = default_ref_file()
     if ref is None:
         raise HTTPException(status_code=400, detail="没有参考音频，没法打分")

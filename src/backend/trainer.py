@@ -54,6 +54,11 @@ _state = {
     "epochs_s1": 8,
     "last_error": "",
     "stopped_by_user": False,
+    "from_scratch": True,
+    # 本次训练产出的权重文件名（挂载只认这些，不用全局 mtime）
+    "produced_weights": {"sv": [], "gpt": []},
+    # 训练前就存在的权重名（挂载时排除掉，避免挂上旧的）
+    "pre_existing_weights": {"sv": set(), "gpt": set()},
 }
 _lines = deque(maxlen=400)
 _lock = threading.Lock()
@@ -80,11 +85,34 @@ def _reader(proc, log_path):
         _state["last_error"] = f"读日志出错: {e}"
 
 
+def _snapshot_existing_weights() -> dict:
+    """记录训练开始前已经存在的权重文件名（挂载时排除）。"""
+    snap = {"sv": set(), "gpt": set()}
+    if SOVITS_ROOT is None:
+        return snap
+    sv_dir = SOVITS_ROOT / "SoVITS_weights_v2Pro"
+    gpt_dir = SOVITS_ROOT / "GPT_weights_v2Pro"
+    if sv_dir.exists():
+        snap["sv"] = {p.name for p in sv_dir.glob("*.pth")}
+    if gpt_dir.exists():
+        snap["gpt"] = {p.name for p in gpt_dir.glob("*.ckpt")}
+    return snap
+
+
 def _waiter(proc):
     """等子进程结束，记录结果并自动挂载新权重。"""
     code = proc.wait()
     _state["running"] = False
     _state["finished_at"] = datetime.now().isoformat(timespec="seconds")
+    # 冻结 elapsed：训练结束后 status() 里 elapsed_sec 不再增长
+    if _state.get("started_at"):
+        try:
+            _state["elapsed_final_sec"] = int(
+                (datetime.fromisoformat(_state["finished_at"])
+                 - datetime.fromisoformat(_state["started_at"])).total_seconds()
+            )
+        except Exception:
+            _state["elapsed_final_sec"] = None
     if _state.get("stopped_by_user"):
         _state["success"] = False
         _state["stage"] = "已停止"
@@ -97,29 +125,74 @@ def _waiter(proc):
             _auto_eval()
 
 
+def _is_new_weight(path, pre_names: set, started_ts):
+    """判定一个权重文件是不是本次训练产出的：新出现，或 mtime 晚于训练开始时间。"""
+    if path.name not in pre_names:
+        return True
+    if started_ts is None:
+        return False
+    try:
+        return path.stat().st_mtime >= started_ts
+    except OSError:
+        return False
+
+
 def _attach_new_weights():
-    """训练完成后把最新的 SoVITS/GPT 权重挂到引擎上。"""
+    """
+    训练完成后把「本次训练产出的」权重挂到引擎上。
+
+    规则（P1 修复）：
+    - 只挂本次训练新建/改写的权重文件（训练前做文件名快照 + 开始时间戳）
+    - 不再按全局 mtime 取最新（会挂到别的实验或旧模型）
+    - 挂载必须校验 HTTP 200，失败要写进日志
+    """
     try:
         import requests
         if SOVITS_ROOT is None:
             return
         sv_dir = SOVITS_ROOT / "SoVITS_weights_v2Pro"
         gpt_dir = SOVITS_ROOT / "GPT_weights_v2Pro"
-        sv = sorted(sv_dir.glob("*.pth")) if sv_dir.exists() else []
-        gpt = sorted(gpt_dir.glob("*.ckpt")) if gpt_dir.exists() else []
-        # 按修改时间取最新的
-        if sv:
-            sv.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            requests.get("http://127.0.0.1:9880/set_sovits_weights",
-                         params={"weights_path": f"SoVITS_weights_v2Pro/{sv[0].name}"}, timeout=180)
+
+        pre = _state.get("pre_existing_weights", {"sv": set(), "gpt": set()})
+        # 本次训练产出的权重 = 新出现的文件 ∪ 本次被覆盖改写的文件（mtime 晚于开始时间）
+        started_ts = None
+        if _state.get("started_at"):
+            try:
+                started_ts = datetime.fromisoformat(_state["started_at"]).timestamp()
+            except Exception:
+                started_ts = None
+
+        sv_files = list(sv_dir.glob("*.pth")) if sv_dir.exists() else []
+        gpt_files = list(gpt_dir.glob("*.ckpt")) if gpt_dir.exists() else []
+        new_sv = sorted(p.name for p in sv_files if _is_new_weight(p, pre["sv"], started_ts))
+        new_gpt = sorted(p.name for p in gpt_files if _is_new_weight(p, pre["gpt"], started_ts))
+
+        if not new_sv and not new_gpt:
             with _lock:
-                _lines.append(f"[自动] 已挂载新音色权重: {sv[0].name}")
-        if gpt:
-            gpt.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            requests.get("http://127.0.0.1:9880/set_gpt_weights",
-                         params={"weights_path": f"GPT_weights_v2Pro/{gpt[0].name}"}, timeout=180)
-            with _lock:
-                _lines.append(f"[自动] 已挂载新韵律权重: {gpt[0].name}")
+                _lines.append("[自动] 没有检测到本次训练产出的权重文件，跳过挂载")
+            return
+
+        for name in new_sv:
+            r = requests.get("http://127.0.0.1:9880/set_sovits_weights",
+                             params={"weights_path": f"SoVITS_weights_v2Pro/{name}"}, timeout=180)
+            if r.status_code == 200:
+                with _lock:
+                    _lines.append(f"[自动] 已挂载新音色权重: {name}")
+                _state["produced_weights"]["sv"].append(name)
+            else:
+                with _lock:
+                    _lines.append(f"[自动挂载失败] SoVITS {name}: HTTP {r.status_code}")
+
+        for name in new_gpt:
+            r = requests.get("http://127.0.0.1:9880/set_gpt_weights",
+                             params={"weights_path": f"GPT_weights_v2Pro/{name}"}, timeout=180)
+            if r.status_code == 200:
+                with _lock:
+                    _lines.append(f"[自动] 已挂载新韵律权重: {name}")
+                _state["produced_weights"]["gpt"].append(name)
+            else:
+                with _lock:
+                    _lines.append(f"[自动挂载失败] GPT {name}: HTTP {r.status_code}")
     except Exception as e:
         with _lock:
             _lines.append(f"[自动挂载失败] {e}")
@@ -132,8 +205,14 @@ def is_running() -> bool:
 
 def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: int = 4,
           save_every_s2: int = 2, save_every_s1: int = 4,
-          lr_s2: float = 0.0, lr_s1: float = 0.0, auto_eval: bool = False) -> dict:
-    """启动训练。返回状态字典。"""
+          lr_s2: float = 0.0, lr_s1: float = 0.0, auto_eval: bool = False,
+          from_scratch: bool = True) -> dict:
+    """
+    启动训练。返回状态字典。
+
+    from_scratch: True = 从预训练底模开始（默认，旧产物会被备份）；
+                  False = 续训（ABV_FROM_SCRATCH=0，保留旧 checkpoint）。
+    """
     if is_running():
         return {"ok": False, "message": "已经有训练在跑了"}
 
@@ -156,6 +235,7 @@ def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: i
     env["ABV_S1_BATCH"] = str(int(batch_s1))
     env["ABV_S2_SAVE_EVERY"] = str(max(1, int(save_every_s2)))
     env["ABV_S1_SAVE_EVERY"] = str(max(1, int(save_every_s1)))
+    env["ABV_FROM_SCRATCH"] = "1" if from_scratch else "0"
     if lr_s2 and float(lr_s2) > 0:
         env["ABV_S2_LR"] = str(float(lr_s2))
     if lr_s1 and float(lr_s1) > 0:
@@ -181,8 +261,12 @@ def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: i
         "lr_s2": float(lr_s2 or 0),
         "lr_s1": float(lr_s1 or 0),
         "auto_eval": bool(auto_eval),
+        "from_scratch": bool(from_scratch),
         "last_error": "",
         "stopped_by_user": False,
+        "elapsed_final_sec": None,
+        "produced_weights": {"sv": [], "gpt": []},
+        "pre_existing_weights": _snapshot_existing_weights(),
     })
 
     try:
@@ -250,8 +334,9 @@ def stop() -> dict:
 
 def status() -> dict:
     """当前训练状态 + 最近日志。"""
-    elapsed = None
-    if _state["started_at"]:
+    # 训练结束后用冻结值；运行中实时算
+    elapsed = _state.get("elapsed_final_sec")
+    if elapsed is None and _state.get("started_at"):
         try:
             elapsed = int((datetime.now() - datetime.fromisoformat(_state["started_at"])).total_seconds())
         except Exception:
@@ -267,6 +352,8 @@ def status() -> dict:
         "success": _state["success"],
         "started_at": _state["started_at"],
         "finished_at": _state["finished_at"],
+        "from_scratch": _state.get("from_scratch", True),
+        "produced_weights": _state.get("produced_weights", {"sv": [], "gpt": []}),
         "epochs_s2": _state["epochs_s2"],
         "epochs_s1": _state["epochs_s1"],
         "log_path": _state["log_path"],

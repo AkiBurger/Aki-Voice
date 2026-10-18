@@ -1,0 +1,53 @@
+# ============================================================
+#  AkiBurger Voice · 后端依赖
+#  Python >= 3.10（作者实测 3.13.15；GPT-SoVITS 官方建议 3.10 ~ 3.11）
+#
+#  安装：
+#      pip install -r requirements.txt
+#
+#  ⚠️ 推荐直接复用 GPT-SoVITS 自带的 venv（作者就是这么跑的），
+#     那个环境里这些依赖通常已经齐全，不必再装一遍；
+#     重复安装 torch / transformers 很可能覆盖掉和引擎匹配的 CUDA 版本。
+#
+#  ⚠️ torch / transformers 的版本请跟随 GPT-SoVITS 的 venv（它已经锁好），
+#     下面的下限只保证接口可用，不代表和你的 CUDA 驱动匹配。
+#
+#  说明：评测用的声纹模型 ERes2NetV2 以及它依赖的 kaldi fbank，
+#       来自 GPT-SoVITS 源码目录（GPT_SoVITS/eres2net 及其中的 kaldi），
+#       不是 pip 包；由 src/backend/evaluate.py 在运行时加入 sys.path 后 import，
+#       不需要、也没法用 pip 安装。
+# ============================================================
+
+# ---- Web 服务 ----
+fastapi>=0.115
+uvicorn>=0.30
+pydantic>=2.10
+
+# ---- HTTP / 调本地服务（GPT-SoVITS 9880、Ollama 11434）----
+requests>=2.31
+
+# ---- 音频读取与分析 ----
+numpy>=1.24
+soundfile>=0.12
+librosa>=0.10
+
+# ---- 评测（声纹向量）/ 内置中→日翻译（MarianMT）----
+torch>=2.0
+transformers>=4.40
+# MarianMT 的分词器用 sacremoses 做标点规范化（缺了会警告并影响译文质量）
+sacremoses>=0.1
+# MarianMT 分词器（SentencePiece）的必需依赖
+sentencepiece>=0.1.99
+
+# ---- 智能分句；缺失时 text_split.py 会自动退回正则切句，功能不中断 ----
+pysbd>=0.3
+
+# ---- 训练脚本读取 GPT-SoVITS 的 s1 YAML 配置 ----
+pyyaml>=6.0
+
+# ---- 可选：本地翻译 / 文本纠错 ----
+# Ollama 不是 Python 包，从 https://ollama.com 安装；
+# 可选模型 qwen3（中→日翻译质量更好）。不装也能用内置 opus-mt 中→日小模型。
+#
+# 训练素材识别用的 funasr 也不在这里：它跑在 GPT-SoVITS 的 venv 里
+# （data/setsuna/batch_asr.py 由该 venv 的 python 执行），随 GPT-SoVITS 安装。

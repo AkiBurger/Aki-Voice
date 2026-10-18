@@ -1,39 +1,57 @@
 @echo off
 chcp 65001 >nul
-title AkiBurger Voice 清理工具
+title AkiBurger Voice - Cleanup
 echo ============================================
-echo   AkiBurger Voice · 清理生成痕迹
+echo   AkiBurger Voice - Cleanup
 echo ============================================
 echo.
-echo 这个脚本会删除：
-echo   - outputs\ 里的全部合成音频
-echo   - data\ref\ 里复制的参考音频
+echo This removes generated data only. Original audio files are NOT touched.
 echo.
-echo 不会动：源代码、设计文档、git 记录、引擎。
+echo   [1] outputs\         - all synthesized audio (regenerable)
+echo   [2] data\ref\        - reference audio + text map (moved to trash)
+echo   [3] data\setsuna\wav - imported training wavs (moved to trash)
 echo.
-set /p confirm="确认要清理吗？输入 y 回车（其他键取消）: "
-if /i not "%confirm%"=="y" (
-    echo 已取消，什么都没删。
-    pause
-    exit /b 0
-)
 
 set "ROOT=%~dp0"
+set "TRASH=%ROOT%data\_trash\cleanup_%DATE:~0,4%%DATE:~5,2%%DATE:~8,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2%"
+set "TRASH=%TRASH: =0%"
+
+set /p doOutputs="[1/3] Delete all files in outputs\ ? (y/N): "
+set /p doRef="[2/3] Move data\ref to trash ? (y/N): "
+set /p doWav="[3/3] Move data\setsuna\wav to trash ? (y/N): "
 
 echo.
-echo [1/2] 清空 outputs ...
-if exist "%ROOT%outputs" (
-    del /s /q "%ROOT%outputs\*" >nul 2>&1
-    for /d %%d in ("%ROOT%outputs\*") do rd /s /q "%%d" 2>nul
+if /i "%doOutputs%"=="y" (
+    echo Cleaning outputs\ ...
+    if exist "%ROOT%outputs" (
+        for /d %%d in ("%ROOT%outputs\*") do rd /s /q "%%d" 2>nul
+        del /q "%ROOT%outputs\*" >nul 2>&1
+    )
+    echo Done.
 )
-echo [2/2] 清空 data\ref ...
-if exist "%ROOT%data\ref" (
-    del /s /q "%ROOT%data\ref\*" >nul 2>&1
+
+if /i "%doRef%"=="y" (
+    echo Moving data\ref to trash ...
+    if exist "%ROOT%data\ref" (
+        if not exist "%TRASH%" mkdir "%TRASH%" >nul 2>&1
+        move "%ROOT%data\ref" "%TRASH%\ref" >nul 2>&1
+        if exist "%ROOT%data\ref" echo WARNING: data\ref still exists, close the app and retry.
+    )
+    echo Done.
+)
+
+if /i "%doWav%"=="y" (
+    echo Moving data\setsuna\wav to trash ...
+    if exist "%ROOT%data\setsuna\wav" (
+        if not exist "%TRASH%" mkdir "%TRASH%" >nul 2>&1
+        move "%ROOT%data\setsuna\wav" "%TRASH%\wav" >nul 2>&1
+        if exist "%ROOT%data\setsuna\wav" echo WARNING: wav folder still exists, close the app and retry.
+    )
+    echo Done.
 )
 
 echo.
-echo 完成。outputs 和 data\ref 已清空。
+if exist "%TRASH%" echo Removed items were moved to: %TRASH%
+echo Nothing was sent to git. Check with: git status
 echo.
-echo 提示：如果还要清 git 里的历史提交，那是另一个操作，
-echo 告诉我（AI）说「重置 git 历史」即可。
 pause

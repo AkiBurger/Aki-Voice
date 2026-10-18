@@ -37,6 +37,7 @@ _state = {
     "finished_at": None,
 }
 _logs = deque(maxlen=200)
+_task_lock = threading.Lock()      # 导入/识别互斥（P1 修复）
 _lock = threading.Lock()
 
 
@@ -99,56 +100,78 @@ def _convert_one(src: Path, dst: Path) -> bool:
 
 def start_import(path_str: str, max_samples: int = 0) -> dict:
     """把文件夹里的音频导入成训练用的 wav（后台跑）。"""
-    if _state["running"]:
+    # 互斥（P1 修复）：扫描文件之前就要占住任务位，否则两个导入能同时开跑
+    if not _task_lock.acquire(blocking=False):
         return {"ok": False, "message": "有任务在跑，等它结束"}
-    src = _resolve(path_str)
-    if not src.is_dir():
-        return {"ok": False, "message": f"不是文件夹：{src}"}
+    try:
+        src = _resolve(path_str)
+        if not src.is_dir():
+            return {"ok": False, "message": f"不是文件夹：{src}"}
 
-    files = [f for f in src.rglob("*") if f.is_file() and f.suffix.lower() in AUDIO_EXT]
-    files.sort()
-    if not files:
-        return {"ok": False, "message": "这个文件夹里没有找到音频文件（支持 ogg/wav/flac/mp3 等）"}
-    # max_samples <= 0 表示全部导入（默认）\n    if max_samples and int(max_samples) > 0:\n        files = files[: int(max_samples)]
+        files = [f for f in src.rglob("*") if f.is_file() and f.suffix.lower() in AUDIO_EXT]
+        files.sort()
+        if not files:
+            return {"ok": False, "message": "这个文件夹里没有找到音频文件（支持 ogg/wav/flac/mp3 等）"}
+        # max_samples <= 0 表示全部导入（默认）
+        if max_samples and int(max_samples) > 0:
+            files = files[: int(max_samples)]
 
-    WAV_DIR.mkdir(parents=True, exist_ok=True)
-    with _lock:
-        _logs.clear()
-    _state.update({
-        "kind": "import", "running": True, "done": 0, "total": len(files),
-        "message": f"开始导入 {len(files)} 段音频", "error": "",
-        "started_at": datetime.now().isoformat(timespec="seconds"), "finished_at": None,
-    })
-
-    def worker():
-        ok = 0
-        for i, f in enumerate(files, 1):
-            dst = WAV_DIR / (f.stem + ".wav")
-            if dst.exists():
-                ok += 1
-            elif _convert_one(f, dst):
-                ok += 1
-            else:
-                _say(f"转换失败: {f.name}")
-            with _lock:
-                _state["done"] = i
-            if i % 20 == 0 or i == len(files):
-                _say(f"导入进度 {i}/{len(files)}，成功 {ok}")
+        WAV_DIR.mkdir(parents=True, exist_ok=True)
         with _lock:
-            _state["running"] = False
-            _state["message"] = f"导入完成：成功 {ok}/{len(files)}"
-            _state["finished_at"] = datetime.now().isoformat(timespec="seconds")
-        _say(_state["message"])
+            _logs.clear()
+        _state.update({
+            "kind": "import", "running": True, "done": 0, "total": len(files),
+            "message": f"开始导入 {len(files)} 段音频", "error": "",
+            "started_at": datetime.now().isoformat(timespec="seconds"), "finished_at": None,
+        })
 
-    threading.Thread(target=worker, daemon=True).start()
-    return {"ok": True, "message": _state["message"], "total": len(files)}
+        def worker():
+            ok = 0
+            err = ""
+            try:
+                for i, f in enumerate(files, 1):
+                    dst = WAV_DIR / (f.stem + ".wav")
+                    if dst.exists():
+                        ok += 1
+                    elif _convert_one(f, dst):
+                        ok += 1
+                    else:
+                        _say(f"转换失败: {f.name}")
+                    with _lock:
+                        _state["done"] = i
+                    if i % 20 == 0 or i == len(files):
+                        _say(f"导入进度 {i}/{len(files)}，成功 {ok}")
+            except Exception as e:
+                err = f"{type(e).__name__}: {e}"
+                _say(f"导入异常：{err}")
+            finally:
+                with _lock:
+                    _state["running"] = False
+                    _state["message"] = (f"导入完成：成功 {ok}/{len(files)}" if not err
+                                         else f"导入失败：{err}")
+                    _state["error"] = err
+                    _state["finished_at"] = datetime.now().isoformat(timespec="seconds")
+                _say(_state["message"])
+                _task_lock.release()
+
+        threading.Thread(target=worker, daemon=True).start()
+        return {"ok": True, "message": _state["message"], "total": len(files)}
+    except Exception:
+        _task_lock.release()
+        raise
+
+
+def is_busy() -> bool:
+    """后台任务（导入/识别）是否在跑。"""
+    return bool(_state.get("running")) or _task_lock.locked()
 
 
 def start_prepare() -> dict:
     """识别 + 清洗（后台跑，比较久）。"""
-    if _state["running"]:
+    if not _task_lock.acquire(blocking=False):
         return {"ok": False, "message": "有任务在跑，等它结束"}
     if not WAV_DIR.exists() or not list(WAV_DIR.glob("*.wav")):
+        _task_lock.release()
         return {"ok": False, "message": "还没有导入音频，先导入再识别"}
 
     with _lock:
@@ -225,6 +248,9 @@ def start_prepare() -> dict:
                 _state["message"] = f"失败：{e}"
                 _state["finished_at"] = datetime.now().isoformat(timespec="seconds")
             _say(_state["message"])
+        finally:
+            if _task_lock.locked():
+                _task_lock.release()
 
     threading.Thread(target=worker, daemon=True).start()
     return {"ok": True, "message": _state["message"]}
@@ -242,7 +268,12 @@ def current_dataset() -> dict:
     clean = DATA_DIR / "setsuna_clean.list"
     clean_count = 0
     if clean.exists():
-        clean_count = len([l for l in clean.read_text(encoding="utf-8").splitlines() if l.strip()])
+        for line in clean.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            wav_path = line.split("|")[0]
+            if Path(wav_path).exists():      # 只算音频还存在的（P1 修复）
+                clean_count += 1
     return {
         "wav_count": len(wavs),
         "clean_count": clean_count,
@@ -323,12 +354,46 @@ def delete_materials(name: str = "", delete_all: bool = False) -> dict:
             pass
     if removed == 0 and not delete_all:
         raise FileNotFoundError(f"找不到文件：{name}")
+
+    # P1 修复：删了音频要同步清理两个标注清单，否则训练还在引用不存在的文件
+    if removed and delete_all:
+        _prune_lists()
+    elif removed and name:
+        _prune_lists([WAV_DIR / Path(name).name])
+
     return {
         "ok": True,
         "removed": removed,
         "remain": len(list(WAV_DIR.glob("*.wav"))) if WAV_DIR.exists() else 0,
         "trash": str(trash),
     }
+
+
+def _prune_lists(targets=None) -> int:
+    """
+    从 setsuna.list / setsuna_clean.list 里删掉音频不存在（或指定 targets）的行。
+    targets=None 表示按"文件是否存在"过滤。
+    """
+    removed = 0
+    drop = set()
+    if targets:
+        drop = {str(Path(t)).lower() for t in targets}
+    for name_ in ("setsuna.list", "setsuna_clean.list"):
+        lf = DATA_DIR / name_
+        if not lf.exists():
+            continue
+        keep = []
+        for line in lf.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            wav_path = line.split("|")[0]
+            gone = (str(Path(wav_path)).lower() in drop) if targets else (not Path(wav_path).exists())
+            if gone:
+                removed += 1
+                continue
+            keep.append(line)
+        lf.write_text("\n".join(keep), encoding="utf-8")
+    return removed
 
 
 def trash_batches() -> list:
@@ -359,10 +424,15 @@ def restore_materials(batch: str = "") -> dict:
         target = TRASH_DIR / batches[0]["batch"]
 
     WAV_DIR.mkdir(parents=True, exist_ok=True)
-    restored = 0
+    restored, skipped = 0, 0
     for w in target.glob("*.wav"):
+        dst = WAV_DIR / w.name
+        # P1 修复：目标已存在就跳过，不覆盖用户后来导入的新音频
+        if dst.exists():
+            skipped += 1
+            continue
         try:
-            shutil.move(str(w), str(WAV_DIR / w.name))
+            shutil.move(str(w), str(dst))
             restored += 1
         except Exception:
             pass
@@ -371,7 +441,11 @@ def restore_materials(batch: str = "") -> dict:
             target.rmdir()
     except Exception:
         pass
-    return {"ok": True, "restored": restored, "remain": len(list(WAV_DIR.glob("*.wav")))}
+    msg = f"已恢复 {restored} 段素材"
+    if skipped:
+        msg += f"，{skipped} 段因同名已存在被跳过"
+    return {"ok": True, "restored": restored, "skipped": skipped, "message": msg,
+            "remain": len(list(WAV_DIR.glob("*.wav")))}
 
 def _read_list(path):
     """读 .list 文件 → {wav 路径: 文本}"""

@@ -57,12 +57,17 @@ def set_models(sovits_file: str = "", gpt_file: str = "") -> None:
 
 
 def is_engine_up(timeout: float = 2.0) -> bool:
-    """引擎进程活着吗（/docs 是 FastAPI 自带页面，通了就算活着）。"""
+    """引擎进程活着吗（/docs 是 FastAPI 自带页面，通了就算活着）。
+    引擎重启后会回到默认权重，所以探测到掉线时清空挂载缓存，下次合成重新挂。"""
     try:
         r = requests.get(f"{ENGINE_URL}/docs", timeout=timeout)
-        return r.status_code == 200
+        up = r.status_code == 200
     except Exception:
-        return False
+        up = False
+    if not up:
+        _attached["sovits"] = None
+        _attached["gpt"] = None
+    return up
 
 
 def synthesize(text: str, text_lang: str, ref_audio_path: str,

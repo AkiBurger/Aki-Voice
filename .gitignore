@@ -13,7 +13,11 @@ models/
 checkpoints*/
 
 # ---- 音频素材与输出（含用户录音，隐私）----
-data/
+# 注意：data/ 下要保留训练脚本（克隆后必须有），所以用分层忽略 + 反忽略
+data/*
+!data/setsuna/
+data/setsuna/*
+!data/setsuna/*.py
 outputs/
 *.wav
 *.mp3
@@ -21,6 +25,11 @@ outputs/
 *.ogg
 *.m4a
 *.opus
+*.list
+
+# ---- 编译产物（启动器 exe 走 GitHub Release，不进仓库）----
+/AkiBurgerVoice.exe
+*.exe
 
 # ---- 训练产物 ----
 logs/

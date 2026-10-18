@@ -29,6 +29,7 @@
     currentHistoryUrl: null,
     temperature: 0.9,         // 音质微调：越低越稳
     seed: -1,                 // -1 = 每次随机
+    inFlight: false,          // 合成请求进行中（防重复点击 / Ctrl+Enter / 换种子重合成）
   };
 
   // ---------- 元素 ----------
@@ -40,7 +41,6 @@
     retryBtn: $('retryBtn'),
     previewBtn: $('previewBtn'),
     renameModelBtn: $('renameModelBtn'),
-    previewAudio: $('previewAudio'),
     langBtns: [...document.querySelectorAll('.lang-btn')],
     inLangBtns: [...document.querySelectorAll('.in-lang-btn')],
     langNote: $('langNote'),
@@ -90,6 +90,7 @@
     // 训练
     trainBadge: $('trainBadge'),
     trainData: $('trainData'),
+    fromScratch: $('fromScratch'),
     epochsS2: $('epochsS2'),
     epochsS1: $('epochsS1'),
     trainStartBtn: $('trainStartBtn'),
@@ -198,7 +199,17 @@
       try {
         const body = await res.json();
         if (body && (body.message || body.detail)) {
-          msg = typeof body.detail === 'string' ? body.detail : (body.message || msg);
+          if (typeof body.detail === 'string') {
+            msg = body.detail;
+          } else if (Array.isArray(body.detail) && body.detail.length) {
+            // FastAPI 422：detail 是数组，取第一条的 msg（比 "HTTP 422" 有用）
+            const first = body.detail[0] || {};
+            msg = String(first.msg || body.message || msg);
+            const field = Array.isArray(first.loc) ? first.loc[first.loc.length - 1] : '';
+            if (field && msg.indexOf(String(field)) < 0) msg = field + '：' + msg;
+          } else {
+            msg = body.message || msg;
+          }
         }
       } catch (e) { /* 非 JSON 响应 */ }
       throw new Error(msg);
@@ -206,20 +217,42 @@
     return res.json();
   }
 
-  function setEngineUp(up, reason) {
+  // 下载文件名用的时间戳：voice_20261018_2150.wav
+  function downloadStamp(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+  }
+
+  // 引擎未就绪提示：区分「后端连不上」和「后端在、引擎没起来」
+  function renderEngineNotice(kind) {
+    if (!els.engineDownDesc || !kind) return;
+    let desc = '';
+    if (kind === 'backend') {
+      // fetch 本身失败 = 后端服务不可达
+      desc = '界面已经打开了，但后端服务没连上。<br>' +
+        '试试：先启动后端的 <code>app.py</code>（负责把请求转给声音引擎），再点下面的按钮重连。';
+    } else if (kind === 'engine') {
+      // 后端活着，但 /api/health 返回 engine_up=false
+      desc = '后端服务已经连上了，但声音引擎还没就绪（可能还在加载模型）。<br>' +
+        '等几秒再点下面的按钮重连；一直不行就看后端窗口的报错。';
+    } else {
+      // 后端有响应，但健康检查本身失败了
+      desc = '后端有响应，但健康检查失败了。<br>看看后端窗口的报错，然后点下面的按钮重连。';
+    }
+    els.engineDownDesc.innerHTML =
+      desc + ' <button type="button" class="linklike" id="retryBtn2">重试连接</button>';
+    const btn = els.engineDownDesc.querySelector('#retryBtn2');
+    if (btn) btn.addEventListener('click', boot);
+  }
+
+  // kind：'backend' = fetch 失败（后端不可达）；'engine' = 后端在但 engine_up=false；'http' = 健康检查报错
+  function setEngineUp(up, kind) {
     state.engineUp = up;
     els.engineBadge.textContent = up ? '引擎就绪' : '引擎未就绪';
     els.engineBadge.className = 'badge ' + (up ? 'badge-ok' : 'badge-danger');
     els.footEngine.textContent = up ? '引擎在线' : '引擎未连接';
     els.engineDown.classList.toggle('hidden', up);
-    if (!up && reason) {
-      els.engineDownDesc.innerHTML =
-        '界面已经打开了，但后端服务没连上。<br>' +
-        '试试：先启动后端的 <code>backend.py</code>（负责把请求转给声音引擎），' +
-        '再点 <button type="button" class="linklike" id="retryBtn2">重试连接</button>。';
-      const btn = els.engineDownDesc.querySelector('#retryBtn2');
-      if (btn) btn.addEventListener('click', boot);
-    }
+    if (!up && kind) renderEngineNotice(kind);
     els.synthBtn.disabled = !up;
     els.batchToggleBtn.disabled = !up;
     els.previewBtn.disabled = !up;
@@ -231,16 +264,20 @@
     setEngineUp(false, null);
     try {
       const h = await api('/api/health');
-      setEngineUp(Boolean(h.engine_up));
-      if (h.engine_up) {
-        await Promise.all([loadVoices(), loadHistory(), loadEvalHistory()]);
+      const up = Boolean(h && h.engine_up);
+      setEngineUp(up, up ? null : 'engine');
+      // 历史不依赖引擎（P2 修复）：引擎没就绪时也把上次的合成记录列出来
+      await loadHistory();
+      if (up) {
+        await Promise.all([loadVoices(), loadEvalHistory()]);
       }
       // 训练面板不依赖引擎状态，始终加载
       loadTrainData();
       refreshTrainStatus();
     } catch (e) {
-      // 可能是 file:// 直接打开（无后端），或后端未启动
-      setEngineUp(false, e.message);
+      // fetch 失败（后端没起 / file:// 打开）和 HTTP 错误分开提示
+      const httpErr = /^HTTP \d+/.test(String((e && e.message) || e));
+      setEngineUp(false, httpErr ? 'http' : 'backend');
     }
   }
 
@@ -269,8 +306,9 @@
       }
       els.voiceSelect.disabled = false;
       if (els.renameModelBtn) els.renameModelBtn.disabled = false;
-      // 记忆上次选择
-      const last = localStorage.getItem('abv:voice');
+      // 记忆上次选择（localStorage 不可用时静默跳过，不能因此把音色列表判成加载失败）
+      let last = '';
+      try { last = localStorage.getItem('abv:voice') || ''; } catch (e) { last = ''; }
       if (last && state.voices.some((v) => (v.path || v.name || v.display) === last || (v.char === 'model' && v.name === last))) {
         els.voiceSelect.value = last;
       }
@@ -380,6 +418,11 @@
 
   // ---------- 合成 ----------
   async function synthesize() {
+    // 防重复：正在合成时再触发（连点 / Ctrl+Enter / 换种子）直接忽略
+    if (state.inFlight) {
+      showToast('正在合成中，请稍等…');
+      return;
+    }
     const text = els.textInput.value.trim();
     if (!text) {
       showError('还没输入台词', '在文本框里写点东西，再点合成。');
@@ -393,6 +436,7 @@
     }
 
     hideError();
+    state.inFlight = true;
     els.synthBtn.disabled = true;
     els.synthBtn.querySelector('.btn-label').textContent = '⏳ 合成中…';
     els.synthProgress.classList.remove('hidden');
@@ -432,6 +476,8 @@
       state.currentAudioUrl = res.audio_url;
       els.resultAudio.src = res.audio_url;
       els.downloadLink.href = res.audio_url;
+      // 下载文件名带时间戳，避免每次都叫 full.wav
+      els.downloadLink.download = 'voice_' + downloadStamp(new Date()) + '.wav';
       els.resultSection.classList.remove('hidden');
 
       const segs = Array.isArray(res.segments) ? res.segments.length : 0;
@@ -442,10 +488,13 @@
         '耗时 ' + (res.elapsed_ms != null ? (res.elapsed_ms / 1000).toFixed(1) : (elapsed / 1000).toFixed(1)) + ' 秒';
 
       loadHistory(); // 刷新历史
+      // 新结果自动播放前，先停掉其它正在响的（历史/批量/试听），避免同时出声
+      stopAll(els.resultAudio);
       setTimeout(() => els.resultAudio.play().catch(() => {}), 100);
     } catch (e) {
       showError('合成失败', String(e.message || e));
     } finally {
+      state.inFlight = false;
       els.synthBtn.disabled = !state.engineUp;
       els.synthBtn.querySelector('.btn-label').textContent = '🔊 合成';
       els.synthProgress.classList.add('hidden');
@@ -453,16 +502,38 @@
   }
 
   // ---------- 统一播放：任何时候只响一个 ----------
-  function stopAudio() {
-    if (state.currentAudio) {
+  // 历史行的高亮和播放图标，在别处播放时也要复位
+  function clearHistoryPlaying() {
+    if (!els.historyList) return;
+    els.historyList.querySelectorAll('.history-item.playing').forEach((n) => {
+      n.classList.remove('playing');
+      const p = n.querySelector('.history-play');
+      if (p) p.textContent = '▶';
+    });
+  }
+
+  // 停掉所有正在响的音频：动态 Audio（素材/质检/标注/评测/试听/历史）、
+  // 结果播放器 #resultAudio、批量合成里的 <audio>
+  // exclude：本次即将播放的元素，不停它（否则会把自己也按停）
+  function stopAll(exclude) {
+    if (state.currentAudio && state.currentAudio !== exclude) {
       try { state.currentAudio.pause(); } catch (e) { /* 忽略 */ }
       state.currentAudio = null;
     }
+    if (els.resultAudio && els.resultAudio !== exclude) {
+      try { els.resultAudio.pause(); } catch (e) { /* 忽略 */ }
+    }
+    document.querySelectorAll('#batchResults audio').forEach((a) => {
+      if (a !== exclude) {
+        try { a.pause(); } catch (e) { /* 忽略 */ }
+      }
+    });
+    clearHistoryPlaying();
   }
 
   function playAudio(url) {
     if (!url) return;
-    stopAudio();
+    stopAll();
     const a = new Audio(url);
     state.currentAudio = a;
     a.addEventListener('ended', () => {
@@ -970,8 +1041,12 @@
     const s1 = parseInt((els.epochsS1 && els.epochsS1.value) || '8', 10);
     const b2 = parseInt((els.batchS2 && els.batchS2.value) || '2', 10);
     const b1 = parseInt((els.batchS1 && els.batchS1.value) || '4', 10);
+    // 默认从零训练：不加载上次训练到一半的权重，避免续训导致轮数不生效
+    const fromScratch = !!(els.fromScratch && els.fromScratch.checked);
     const ok = window.confirm(
-      `开始训练？\n音色模型 ${s2} 轮 + 韵律模型 ${s1} 轮，预计 ${Math.round(s2 * 2 + s1 * 0.6)} 分钟左右。\n训练期间合成会变慢（显存被占用），建议先做完手头的合成。`
+      `开始训练？\n音色模型 ${s2} 轮 + 韵律模型 ${s1} 轮，预计 ${Math.round(s2 * 2 + s1 * 0.6)} 分钟左右。\n` +
+      '模式：' + (fromScratch ? '从零训练（用预训练底模重新开始）' : '在现有权重基础上继续训练') + '\n' +
+      `训练期间合成会变慢（显存被占用），建议先做完手头的合成。`
     );
     if (!ok) return;
     els.trainStartBtn.disabled = true;
@@ -986,6 +1061,7 @@
           lr_s2: parseFloat((els.lrS2 && els.lrS2.value) || '0'),
           lr_s1: parseFloat((els.lrS1 && els.lrS1.value) || '0'),
           auto_eval: !!(els.autoEval && els.autoEval.checked),
+          from_scratch: fromScratch,
         }),
       });
       await refreshTrainStatus();
@@ -1164,11 +1240,20 @@
       for (const e of list) {
         const row = document.createElement('div');
         row.className = 'eval-history-item';
-        row.innerHTML =
-          '<span class="eval-h-score">' + (e.overall != null ? e.overall.toFixed(3) : '—') + '</span>' +
-          '<span class="eval-h-level">' + (e.level || '') + '</span>' +
-          '<span class="eval-h-model">' + (e.model || '') + '</span>' +
-          '<span class="eval-h-time">' + formatTime(e.created_at || e.time) + '</span>';
+        // 全部用 textContent 渲染（e.model 是后端数据，不拼 innerHTML）
+        const score = document.createElement('span');
+        score.className = 'eval-h-score';
+        score.textContent = e.overall != null ? e.overall.toFixed(3) : '—';
+        const level = document.createElement('span');
+        level.className = 'eval-h-level';
+        level.textContent = e.level || '';
+        const model = document.createElement('span');
+        model.className = 'eval-h-model';
+        model.textContent = e.model || '';
+        const time = document.createElement('span');
+        time.className = 'eval-h-time';
+        time.textContent = formatTime(e.created_at || e.time);
+        row.append(score, level, model, time);
         els.evalHistory.appendChild(row);
       }
     } catch (e) {
@@ -1218,8 +1303,22 @@
     }
   }
 
+  // 按下拉框的 value 找音色：模型条目 value = 模型名，零样本 value = 参考音频路径
+  function findVoice(value) {
+    if (!value) return null;
+    return state.voices.find((v) =>
+      (v.char === 'model' ? (v.name || v.path) === value : (v.path || v.name) === value)
+    ) || null;
+  }
+
   function savePresets(list) {
-    localStorage.setItem(PRESET_KEY, JSON.stringify(list));
+    // 返回 false 表示没存上（隐私模式/空间满），由调用方提示用户
+    try {
+      localStorage.setItem(PRESET_KEY, JSON.stringify(list));
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   function renderPresets() {
@@ -1242,10 +1341,10 @@
 
     const meta = document.createElement('div');
     meta.className = 'preset-meta';
-    const voiceName = state.voices.find((v) => (v.path || v.name) === p.voice);
+    const voiceName = findVoice(p.voice);
     const voiceTag = document.createElement('span');
     voiceTag.className = 'history-tag';
-    voiceTag.textContent = voiceName ? voiceName.name : '音色已失效';
+    voiceTag.textContent = voiceName ? (voiceName.display || voiceName.label || voiceName.name) : '音色已失效';
     const langTag = document.createElement('span');
     langTag.className = 'history-tag';
     langTag.textContent = (p.lang || '?').toUpperCase();
@@ -1269,7 +1368,10 @@
     del.addEventListener('click', () => {
       const list = getPresets();
       list.splice(index, 1);
-      savePresets(list);
+      if (!savePresets(list)) {
+        showError('预设删除失败', '浏览器本地存储不可用（可能是隐私模式或空间满了），这次删除没生效。');
+        return;
+      }
       renderPresets();
     });
 
@@ -1280,12 +1382,17 @@
 
   function applyPreset(p) {
     // 音色仍存在才设置
-    if (p.voice && state.voices.some((v) => (v.path || v.name) === p.voice)) {
+    if (findVoice(p.voice)) {
       els.voiceSelect.value = p.voice;
     }
     if (p.lang && ['zh', 'en', 'ja'].includes(p.lang)) setLang(p.lang);
+    if (p.inputLang && ['zh', 'en', 'ja'].includes(p.inputLang)) setInputLang(p.inputLang);
     if (p.tone) setTone(p.tone);
+    // 音质微调也要一起恢复，否则预设里的声音参数对不上
+    if (p.temperature != null) setTemperature(p.temperature);
+    if (p.seed != null) setSeed(p.seed);
     els.textInput.focus();
+    showToast('已套用预设「' + (p.name || '') + '」');
   }
 
   function saveCurrentPreset() {
@@ -1299,12 +1406,20 @@
       name,
       voice: els.voiceSelect.value || '',
       lang: state.lang,
+      inputLang: state.inputLang,
       tone: state.tone,
+      temperature: state.temperature,
+      seed: state.seed,
       savedAt: new Date().toISOString(),
     };
     list.push(preset);
-    savePresets(list);
+    if (!savePresets(list)) {
+      // localStorage 不可用时不能静默失败，否则用户以为存上了
+      showError('预设保存失败', '浏览器本地存储不可用（可能是隐私模式或空间满了），这次预设没存上。');
+      return;
+    }
     renderPresets();
+    showToast('预设已保存');
   }
 
   // ---------- 试听所选音色 ----------
@@ -1318,18 +1433,24 @@
     try {
       const url = '/api/preview?voice=' + encodeURIComponent(voice);
       const res = await fetch(url);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!res.ok) {
+        // 按状态码给不同的说法：404 = 没有这个参考音频，500 = 引擎出错
+        if (res.status === 404) {
+          showError('找不到这个参考音频', '当前音色没有可用的参考音频。换一个音色再试，或者先训练一个模型。');
+        } else if (res.status === 500) {
+          showError('引擎出错', '声音引擎试听时出错了，稍后再试；一直失败就看后端窗口的报错。');
+        } else {
+          showError('试听失败', '请求没能完成（HTTP ' + res.status + '），稍后再试。');
+        }
+        return;
+      }
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
       playAudio(objUrl);
       setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
     } catch (e) {
-      // 后端还没实现 /api/preview，给出人话提示，请 lead 补接口
-      showError(
-        '试听接口还没开通',
-        '前端已经按 GET /api/preview?voice=xxx 的方式请求了，但后端还没有这个接口（返回：' +
-        String(e.message || e) + '）。请联系后端同事补上：用声音引擎把该音色的参考音频转成音频流返回。'
-      );
+      // fetch 本身失败 = 后端服务连不上
+      showError('试听失败', '连不上后端服务（' + String(e.message || e) + '），确认后端还在运行后重试。');
     }
   }
 
@@ -1412,6 +1533,8 @@
           audio.controls = true;
           audio.preload = 'metadata';
           audio.src = res.audio_url;
+          // 批量音频也纳入统一播放管理：开始播放时停掉结果播放器/历史/其它音频
+          audio.addEventListener('play', () => stopAll(audio));
           row.appendChild(audio);
         } else {
           throw new Error(res && res.message ? res.message : '没有返回音频');
@@ -1471,7 +1594,8 @@
     dl.title = '下载';
     dl.href = item.audio_url || '#';
     if (!item.audio_url) dl.classList.add('hidden');
-    dl.setAttribute('download', '');
+    // 下载文件名带这条记录的时间戳，不要都叫 full.wav
+    dl.setAttribute('download', 'voice_' + (item.time || downloadStamp(new Date())) + '.wav');
 
     // 删除这一条
     const del = document.createElement('button');
@@ -1502,13 +1626,8 @@
       if (e.target === dl) return;
       if (!url) return;
       const playing = row.classList.contains('playing');
-      // 全部停掉，再决定是否播放这一条（点同一条 = 暂停）
-      stopAudio();
-      els.historyList.querySelectorAll('.history-item.playing').forEach((n) => {
-        n.classList.remove('playing');
-        const p = n.querySelector('.history-play');
-        if (p) p.textContent = '▶';
-      });
+      // 先停掉所有来源（结果播放器/批量/其它历史/素材试听），再决定是否播放这一条
+      stopAll();
       if (playing) return;
       const audio = new Audio(url);
       state.currentAudio = audio;
@@ -1578,6 +1697,8 @@
   els.retrySynthBtn.addEventListener('click', synthesize);
   els.retryBtn.addEventListener('click', boot);
   els.previewBtn.addEventListener('click', previewVoice);
+  // 结果播放器开始播放时停掉其它来源（批量/历史/试听），同一时间只响一个
+  els.resultAudio.addEventListener('play', () => stopAll(els.resultAudio));
   els.savePresetBtn.addEventListener('click', saveCurrentPreset);
   if (els.renameModelBtn) els.renameModelBtn.addEventListener('click', renameCurrentModel);
   if (els.evalBtn) els.evalBtn.addEventListener('click', runEvaluation);
@@ -1616,7 +1737,23 @@
   }
   if (els.trainStopBtn) els.trainStopBtn.addEventListener('click', stopTraining);
 
-  // ---------- 音质微调 ----------
+  // ---------- 音质微调（预设恢复也走这里，保证 UI 和 state 一致）----------
+  function setTemperature(v) {
+    let n = parseFloat(v);
+    if (!isFinite(n)) n = 0.9;
+    n = Math.min(1.2, Math.max(0.5, n));
+    state.temperature = n;
+    if (els.tempRange) els.tempRange.value = String(n);
+    if (els.tempValue) els.tempValue.textContent = n.toFixed(2);
+  }
+
+  function setSeed(v) {
+    let n = parseInt(v, 10);
+    if (isNaN(n)) n = -1;
+    state.seed = n;
+    if (els.seedInput) els.seedInput.value = String(n);
+  }
+
   if (els.advToggleBtn) {
     els.advToggleBtn.addEventListener('click', () => {
       const hidden = els.advPanel.classList.toggle('hidden');
@@ -1624,24 +1761,20 @@
     });
   }
   if (els.tempRange) {
-    els.tempRange.addEventListener('input', () => {
-      state.temperature = parseFloat(els.tempRange.value);
-      els.tempValue.textContent = state.temperature.toFixed(2);
-    });
-    state.temperature = parseFloat(els.tempRange.value);
-    els.tempValue.textContent = state.temperature.toFixed(2);
+    els.tempRange.addEventListener('input', () => setTemperature(els.tempRange.value));
+    setTemperature(els.tempRange.value);   // 初始化 state.temperature
   }
   if (els.seedInput) {
-    els.seedInput.addEventListener('change', () => {
-      const v = parseInt(els.seedInput.value, 10);
-      state.seed = isNaN(v) ? -1 : v;
-    });
+    els.seedInput.addEventListener('change', () => setSeed(els.seedInput.value));
   }
   if (els.rerollBtn) {
     els.rerollBtn.addEventListener('click', () => {
-      const s = Math.floor(Math.random() * 2147483000);
-      els.seedInput.value = s;
-      state.seed = s;
+      // 合成进行中不换种子，否则会把当前结果的种子改乱
+      if (state.inFlight) {
+        showToast('正在合成中，请稍等…');
+        return;
+      }
+      setSeed(Math.floor(Math.random() * 2147483000));
       // 换种子后直接重合成
       synthesize();
     });
@@ -1678,7 +1811,8 @@
 
   els.voiceSelect.addEventListener('change', () => {
     if (els.voiceSelect.value) {
-      localStorage.setItem('abv:voice', els.voiceSelect.value);
+      // 记不住选择不影响使用，localStorage 不可用时静默跳过
+      try { localStorage.setItem('abv:voice', els.voiceSelect.value); } catch (e) { /* 忽略 */ }
       // 换了模型，之前的质检/标注结果不再对应，清掉
       clearQcResult(true);
       clearAnnResult(true);
@@ -1708,16 +1842,19 @@
   setInterval(async () => {
     try {
       const h = await api('/api/health');
-      if (Boolean(h.engine_up) !== state.engineUp) {
-        if (h.engine_up) {
+      const up = Boolean(h && h.engine_up);
+      if (up !== state.engineUp) {
+        if (up) {
           setEngineUp(true);
           await Promise.all([loadVoices(), loadHistory()]);
         } else {
-          setEngineUp(false);
+          // 后端在，只是引擎掉了
+          setEngineUp(false, 'engine');
         }
       }
     } catch (e) {
-      if (state.engineUp) setEngineUp(false);
+      // 连 /api/health 都请求不到 = 后端不可达
+      if (state.engineUp) setEngineUp(false, 'backend');
     }
   }, 12000);
 
