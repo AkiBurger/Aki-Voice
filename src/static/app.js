@@ -110,6 +110,33 @@
     evalHistoryEmpty: $('evalHistoryEmpty'),
   };
 
+  // ---------- 页面切换（顶部标签）----------
+  const VIEW_NAMES = ['synth', 'train', 'eval'];
+
+  function switchView(name) {
+    if (!VIEW_NAMES.includes(name)) name = 'synth';
+    VIEW_NAMES.forEach((v) => {
+      const el = document.getElementById('view-' + v);
+      if (el) el.classList.toggle('hidden', v !== name);
+    });
+    document.querySelectorAll('.flow-step[data-view]').forEach((b) => {
+      b.classList.toggle('current', b.dataset.view === name);
+    });
+    try {
+      history.replaceState(null, '', '#' + name);
+    } catch (e) {
+      /* file:// 下可能不支持，忽略 */
+    }
+    if (name === 'train') {
+      loadTrainData();
+      refreshTrainStatus();
+    }
+    if (name === 'eval') {
+      loadEvalHistory();
+    }
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+  }
+
   // ---------- 工具 ----------
   async function api(path, options) {
     const res = await fetch(path, options);
@@ -1079,5 +1106,12 @@
   // ---------- 启动 ----------
   updateMeta();
   renderPresets();
+  // 顶部标签切换
+  document.querySelectorAll('.flow-step[data-view]').forEach((b) => {
+    b.addEventListener('click', () => switchView(b.dataset.view));
+  });
+  // 直接带 #train / #eval 打开也能定位
+  switchView((location.hash || '#synth').slice(1));
+
   boot();
 })();

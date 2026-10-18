@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AkiBurger Voice · 合成台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2314161a'/><text x='50' y='68' font-size='48' text-anchor='middle' fill='%234a9eff' font-family='sans-serif' font-weight='bold'>A</text></svg>">
-<link rel="stylesheet" href="styles.css?v=20261018c">
+<link rel="stylesheet" href="styles.css?v=20261018j">
 </head>
 <body>
 
@@ -29,18 +29,21 @@
   </div>
 </header>
 
-<!-- ===== 流程导航（设计原则 1：主流程永远可见）===== -->
+<!-- ===== 流程导航（可点击切换页面）===== -->
 <nav class="flowbar" aria-label="工作流程">
-  <div class="flow-step future"><span class="flow-dot">○</span>素材</div>
-  <div class="flow-step future"><span class="flow-dot">○</span>质检</div>
-  <div class="flow-step future"><span class="flow-dot">○</span>标注</div>
-  <div class="flow-step done"><span class="flow-dot">◉</span>训练</div>
-  <div class="flow-step done"><span class="flow-dot">◉</span>评测</div>
-  <div class="flow-step current"><span class="flow-dot">●</span>合成</div>
+  <button type="button" class="flow-step future" disabled title="功能开发中"><span class="flow-dot">○</span>素材</button>
+  <button type="button" class="flow-step future" disabled title="功能开发中"><span class="flow-dot">○</span>质检</button>
+  <button type="button" class="flow-step future" disabled title="功能开发中"><span class="flow-dot">○</span>标注</button>
+  <button type="button" class="flow-step" data-view="train"><span class="flow-dot">◉</span>训练</button>
+  <button type="button" class="flow-step" data-view="eval"><span class="flow-dot">◉</span>评测</button>
+  <button type="button" class="flow-step current" data-view="synth"><span class="flow-dot">●</span>合成</button>
 </nav>
-<div class="flowbar-note">素材 → 质检 → 标注 → 训练 → 评测 → 合成　·　当前已开放「训练」「评测」「合成」，素材处理功能即将上线</div>
+<div class="flowbar-note">点上面的标签切换页面：训练 / 评测 / 合成　·　素材、质检、标注开发中</div>
 
 <main class="workspace">
+
+  <!-- ===== 合成页 ===== -->
+  <div class="view" id="view-synth">
 
   <!-- ===== 引擎未就绪提示（默认隐藏）===== -->
   <section id="engineDown" class="notice notice-warn hidden">
@@ -219,6 +222,20 @@
     </div>
   </section>
 
+  <!-- ===== 历史 ===== -->
+  <section class="card">
+    <div class="history-head">
+      <div class="field-label" style="margin:0;border:0;padding:0;">历史记录</div>
+      <button type="button" id="clearHistoryBtn" class="btn-danger-link" hidden>🗑 清空历史</button>
+    </div>
+    <div id="historyList" class="history-list">
+      <div class="history-empty" id="historyEmpty">还没有合成记录。合成的音频会出现在这里。</div>
+    </div>
+  </section>
+  </div>
+
+  <!-- ===== 训练页 ===== -->
+  <div class="view hidden" id="view-train">
   <!-- ===== 训练 ===== -->
   <section class="card" id="trainSection">
     <div class="history-head">
@@ -246,6 +263,11 @@
       <pre class="train-log" id="trainLog"></pre>
     </div>
   </section>
+
+  </div>
+
+  <!-- ===== 评测页 ===== -->
+  <div class="view hidden" id="view-eval">
 
   <!-- ===== 评测打分 ===== -->
   <section class="card" id="evalSection">
@@ -283,17 +305,8 @@
     </div>
   </section>
 
-  <!-- ===== 历史 ===== -->
-  <section class="card">
-    <div class="history-head">
-      <div class="field-label" style="margin:0;border:0;padding:0;">历史记录</div>
-      <button type="button" id="clearHistoryBtn" class="btn-danger-link" hidden>🗑 清空历史</button>
-    </div>
-    <div id="historyList" class="history-list">
-      <div class="history-empty" id="historyEmpty">还没有合成记录。合成的音频会出现在这里。</div>
-    </div>
-  </section>
 
+  </div>
 </main>
 
 <footer class="foot">
@@ -302,6 +315,6 @@
   <span id="footEngine">引擎状态未知</span>
 </footer>
 
-<script src="app.js?v=20261018c"></script>
+<script src="app.js?v=20261018j"></script>
 </body>
 </html>
