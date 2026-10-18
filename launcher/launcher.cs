@@ -18,8 +18,6 @@ namespace AkiBurgerVoice
         const string ENGINE_URL = "http://127.0.0.1:9880";
         const string BACKEND_URL = "http://127.0.0.1:8017";
         const string PAGE_URL = "http://127.0.0.1:8017/static/index.html";
-        const string GPT_WEIGHTS = "GPT_weights_v2Pro/setsuna_light-e8.ckpt";
-        const string SOVITS_WEIGHTS = "SoVITS_weights_v2Pro/setsuna_light_e2_s362.pth";
 
         string logPath;
         Label lblStatus;
@@ -144,8 +142,8 @@ namespace AkiBurgerVoice
                 }
                 Log("引擎就绪");
 
-                // ---------- 2. 挂载训练好的声音 ----------
-                SetStatus("加载训练好的雪菜声音...", "");
+                // ---------- 2. 挂载训练好的声音模型 ----------
+                SetStatus("加载声音模型...", "");
                 TryAttachWeights();
 
                 // ---------- 3. 后端 ----------
@@ -264,13 +262,44 @@ namespace AkiBurgerVoice
             return false;
         }
 
+        // 从权重目录里自动找出要挂载的模型（目录里有什么用什么，不写死）
+        string FindWeight(string dir, string pattern)
+        {
+            try
+            {
+                if (!Directory.Exists(dir)) return null;
+                var files = Directory.GetFiles(dir, pattern);
+                if (files.Length == 0) return null;
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                return Path.GetFileName(files[0]);
+            }
+            catch { return null; }
+        }
+
         void TryAttachWeights()
         {
             try
             {
-                HttpGet(ENGINE_URL + "/set_gpt_weights?weights_path=" + GPT_WEIGHTS, 120);
-                HttpGet(ENGINE_URL + "/set_sovits_weights?weights_path=" + SOVITS_WEIGHTS, 120);
-                Log("训练权重已挂载");
+                string sovitsDir = Path.Combine(FindSovitsRoot(), "SoVITS_weights_v2Pro");
+                string gptDir = Path.Combine(FindSovitsRoot(), "GPT_weights_v2Pro");
+                string sovitsFile = FindWeight(sovitsDir, "*.pth");
+                string gptFile = FindWeight(gptDir, "*.ckpt");
+
+                if (sovitsFile != null)
+                {
+                    SetStatus("加载声音模型...", sovitsFile);
+                    HttpGet(ENGINE_URL + "/set_sovits_weights?weights_path=SoVITS_weights_v2Pro/" + sovitsFile, 120);
+                    Log("SoVITS 已挂载: " + sovitsFile);
+                }
+                if (gptFile != null)
+                {
+                    HttpGet(ENGINE_URL + "/set_gpt_weights?weights_path=GPT_weights_v2Pro/" + gptFile, 120);
+                    Log("GPT 已挂载: " + gptFile);
+                }
+                if (sovitsFile == null && gptFile == null)
+                {
+                    Log("没有找到训练权重，将使用预训练底模");
+                }
             }
             catch (Exception ex)
             {

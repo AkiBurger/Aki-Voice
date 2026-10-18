@@ -335,6 +335,58 @@ body {
   font-weight: 600;
 }
 
+/* 输入语言 → 输出语言 双栏 */
+.lang-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+.lang-blk { flex: 1; min-width: 190px; }
+.lang-arrow {
+  color: var(--text-dim);
+  font-size: 18px;
+  padding-top: 26px;
+  flex-shrink: 0;
+}
+.lang-note {
+  margin-top: var(--s2);
+  color: var(--text-dim);
+  font-size: var(--fs-dim);
+}
+
+/* 输入语言按钮：跟输出语言按钮同款 */
+.in-lang-btn {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: var(--s2) var(--s4);
+  font-size: var(--fs-body);
+  font-family: var(--font);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.in-lang-btn:hover { border-color: var(--text-dim); }
+.in-lang-btn.active {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(62, 207, 142, 0.08);
+  font-weight: 600;
+}
+
+/* 翻译结果展示 */
+.translated-box {
+  margin-bottom: var(--s3);
+  padding: var(--s2) var(--s3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success);
+  border-radius: var(--radius-sm);
+}
+.translated-label { color: var(--text-dim); font-size: 12px; margin-bottom: 4px; }
+.translated-text { font-size: var(--fs-body); line-height: 1.6; word-break: break-word; }
+
 /* ============ 文本输入 ============ */
 .text-input {
   width: 100%;
@@ -676,7 +728,6 @@ body {
 
 /* ============ 音质微调 ============ */
 .adv-head { display: flex; align-items: center; }
-
 .adv-toggle {
   background: transparent;
   border: 0;

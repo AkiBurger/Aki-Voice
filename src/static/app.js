@@ -16,7 +16,8 @@
 
   // ---------- 状态 ----------
   const state = {
-    lang: 'ja',
+    lang: 'ja',               // 输出语言
+    inputLang: 'zh',          // 我输入的语言（默认中文：中文进、日文出）
     tone: 'auto',
     voices: [],
     currentAudioUrl: null,
@@ -37,6 +38,10 @@
     previewBtn: $('previewBtn'),
     previewAudio: $('previewAudio'),
     langBtns: [...document.querySelectorAll('.lang-btn')],
+    inLangBtns: [...document.querySelectorAll('.in-lang-btn')],
+    langNote: $('langNote'),
+    translatedBox: $('translatedBox'),
+    translatedText: $('translatedText'),
     textInput: $('textInput'),
     charCount: $('charCount'),
     durationEst: $('durationEst'),
@@ -178,6 +183,24 @@
   function setLang(lang) {
     state.lang = lang;
     els.langBtns.forEach((b) => b.classList.toggle('active', b.dataset.lang === lang));
+    updateLangNote();
+  }
+
+  function setInputLang(lang) {
+    state.inputLang = lang;
+    els.inLangBtns.forEach((b) => b.classList.toggle('active', b.dataset.lang === lang));
+    updateLangNote();
+  }
+
+  function updateLangNote() {
+    if (!els.langNote) return;
+    const names = { zh: '中文', ja: '日文', en: '英文' };
+    if (state.inputLang === state.lang) {
+      els.langNote.textContent = `输入和输出都是${names[state.lang]}，直接合成不翻译。`;
+    } else {
+      els.langNote.textContent =
+        `输入${names[state.inputLang]} → 先用本地模型翻译成${names[state.lang]}，再用训练好的声音读出来。`;
+    }
   }
 
   // ---------- 字数与时长估算 ----------
@@ -261,7 +284,10 @@
     els.synthBtn.disabled = true;
     els.synthBtn.querySelector('.btn-label').textContent = '⏳ 合成中…';
     els.synthProgress.classList.remove('hidden');
-    els.progressText.textContent = '正在合成「' + text.slice(0, 20) + (text.length > 20 ? '…' : '') + '」';
+    const translating = state.inputLang !== state.lang;
+    els.progressText.textContent = translating
+      ? '正在翻译并合成…'
+      : '正在合成「' + text.slice(0, 20) + (text.length > 20 ? '…' : '') + '」';
     const t0 = performance.now();
 
     try {
@@ -269,12 +295,22 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text, lang: state.lang, voice, tone: state.tone,
+          text, lang: state.lang, input_lang: state.inputLang, voice, tone: state.tone,
           seed: state.seed, temperature: state.temperature,
         }),
       });
       const elapsed = Math.round(performance.now() - t0);
       if (!res || !res.ok || !res.audio_url) throw new Error(res && res.message ? res.message : '后端没有返回音频');
+
+      // 显示翻译结果（跨语言时），让用户能核对
+      if (els.translatedBox && els.translatedText) {
+        if (res.translated && res.translated_text) {
+          els.translatedText.textContent = res.translated_text;
+          els.translatedBox.hidden = false;
+        } else {
+          els.translatedBox.hidden = true;
+        }
+      }
 
       // 随机模式下，把这次实际用的种子显示出来，方便复现
       if (els.seedInput && res.seed !== undefined && res.seed !== -1) {
@@ -657,6 +693,8 @@
 
   // ---------- 事件绑定 ----------
   els.langBtns.forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)));
+  els.inLangBtns.forEach((b) => b.addEventListener('click', () => setInputLang(b.dataset.lang)));
+  updateLangNote();
 
   els.toneBtns.forEach((b) => b.addEventListener('click', () => setTone(b.dataset.tone)));
 

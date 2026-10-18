@@ -18,12 +18,12 @@
   </div>
   <div class="topbar-right">
     <label class="voice-picker" for="voiceSelect">
-      <span class="voice-picker-label">音色</span>
+      <span class="voice-picker-label">模型</span>
       <select id="voiceSelect" disabled>
         <option value="">加载中…</option>
       </select>
     </label>
-    <button type="button" id="previewBtn" class="btn-secondary btn-sm" disabled title="试听所选音色的参考音频">▶ 试听</button>
+    <button type="button" id="previewBtn" class="btn-secondary btn-sm" disabled title="试听这个模型的声音">▶ 试听</button>
     <span id="engineBadge" class="badge badge-warn" title="声音引擎连接状态">引擎检查中…</span>
   </div>
 </header>
@@ -55,12 +55,26 @@
 
   <!-- ===== 语言 ===== -->
   <section class="card">
-    <div class="field-label">输出语言</div>
-    <div class="lang-group" role="radiogroup" aria-label="输出语言">
-      <button type="button" class="lang-btn" data-lang="zh">中文</button>
-      <button type="button" class="lang-btn" data-lang="en">英文</button>
-      <button type="button" class="lang-btn active" data-lang="ja">日文</button>
+    <div class="lang-row">
+      <div class="lang-blk">
+        <div class="field-label">我输入的语言</div>
+        <div class="lang-group" role="radiogroup" aria-label="输入语言">
+          <button type="button" class="in-lang-btn active" data-lang="zh">中文</button>
+          <button type="button" class="in-lang-btn" data-lang="ja">日文</button>
+          <button type="button" class="in-lang-btn" data-lang="en">英文</button>
+        </div>
+      </div>
+      <div class="lang-arrow" aria-hidden="true">→</div>
+      <div class="lang-blk">
+        <div class="field-label">输出的语言</div>
+        <div class="lang-group" role="radiogroup" aria-label="输出语言">
+          <button type="button" class="lang-btn" data-lang="zh">中文</button>
+          <button type="button" class="lang-btn" data-lang="en">英文</button>
+          <button type="button" class="lang-btn active" data-lang="ja">日文</button>
+        </div>
+      </div>
     </div>
+    <div class="lang-note" id="langNote">输入中文 → 自动翻译成日文再用训练好的声音读出来。</div>
   </section>
 
   <!-- ===== 台词输入 ===== -->
@@ -180,6 +194,10 @@
   <!-- ===== 结果 ===== -->
   <section id="resultSection" class="card hidden">
     <div class="field-label">结果</div>
+    <div class="translated-box" id="translatedBox" hidden>
+      <div class="translated-label">🌐 翻译后实际朗读的文本（可以核对对不对）</div>
+      <div class="translated-text" id="translatedText"></div>
+    </div>
     <div class="result-main">
       <audio id="resultAudio" controls preload="metadata"></audio>
       <div class="result-actions">

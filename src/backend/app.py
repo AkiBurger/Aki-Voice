@@ -16,6 +16,7 @@ AkiBurger Voice 后端服务。
 """
 import io
 import json
+import re
 import shutil
 import time
 import wave
@@ -32,6 +33,7 @@ from pydantic import BaseModel
 from engine import EngineError, is_engine_up, synthesize
 from emotion import judge_tone, TONES
 from text_split import estimate_seconds, split_sentences
+from translate import TranslateError, is_translator_up, translate
 
 # ---------- 路径 ----------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # voice-studio/
@@ -40,6 +42,15 @@ REF_DIR = DATA_DIR / "ref"                            # 参考音频都在这
 OUTPUT_DIR = PROJECT_ROOT / "outputs"                 # 合成产物都在这
 STATIC_DIR = PROJECT_ROOT / "src" / "static"          # 前端静态页面
 CONFIG_FILE = PROJECT_ROOT / "config.json"
+
+# GPT-SoVITS 的权重目录（扫描用，不写死具体模型）
+SOVITS_ROOT = None
+for _d in Path(r"D:\Dev\ai").glob("02_GPT-SoVITS_*"):
+    if (_d / "GPT-SoVITS" / "api_v2.py").exists():
+        SOVITS_ROOT = _d / "GPT-SoVITS"
+        break
+SOVITS_WEIGHTS_DIR = (SOVITS_ROOT / "SoVITS_weights_v2Pro") if SOVITS_ROOT else None
+GPT_WEIGHTS_DIR = (SOVITS_ROOT / "GPT_weights_v2Pro") if SOVITS_ROOT else None
 
 HOST = "127.0.0.1"
 PORT = 8017
@@ -75,8 +86,9 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # ---------- 请求模型 ----------
 class SynthesizeRequest(BaseModel):
     text: str
-    lang: str = "ja"                    # ja | zh | en
-    voice: str                          # 参考音频文件名（如 setsuna_03）
+    lang: str = "ja"                    # 输出语言：ja | zh | en
+    input_lang: str = ""                # 输入文本的语言；留空=与输出语言相同
+    voice: str = ""                     # 模型 id（如 e2）；留空=默认
     tone: str = "自动"                  # 平静|开心|悲伤|生气|惊讶|害怕|自动
     speed: float = 1.0
     seed: int = -1                      # -1 随机；指定数字则结果可复现
@@ -108,16 +120,47 @@ def list_ref_files() -> list:
     return refs
 
 
+def default_ref_file():
+    """默认参考音频：data/ref 下的第一段 wav。"""
+    files = sorted(REF_DIR.glob("*.wav")) if REF_DIR.exists() else []
+    return files[0] if files else None
+
+
+def list_models() -> list:
+    """
+    扫描 GPT-SoVITS 的权重目录，列出可用的训练模型。
+    不写死在配置里 —— 目录里有什么就显示什么。
+    命名约定：SoVITS 文件名里的 _eN_ 就是训练轮数（如 setsuna_light_e2_s362.pth → e2）。
+    """
+    models = []
+    if SOVITS_WEIGHTS_DIR.exists():
+        for f in sorted(SOVITS_WEIGHTS_DIR.glob("*.pth")):
+            m = re.search(r"_e(\d+)_", f.name)
+            if not m:
+                continue
+            epoch = int(m.group(1))
+            models.append({
+                "id": f"e{epoch}",
+                "label": f"e{epoch}",
+                "epoch": epoch,
+                "file": f.name,
+            })
+    return models
+
+
 def find_ref_file(voice: str, tone: str) -> str:
-    """找到这次合成该用的参考音频绝对路径。"""
-    # 直接给文件名
-    p = REF_DIR / f"{voice}.wav"
-    if p.exists():
-        return str(p)
-    # 给的是完整路径
-    if Path(voice).exists():
-        return str(voice)
-    raise HTTPException(status_code=404, detail=f"找不到参考音频：{voice}（应放在 data/ref/ 下）")
+    """找到这次合成该用的参考音频绝对路径。voice 可以是文件名，也可以是模型 id（如 e2）。"""
+    if voice:
+        p = REF_DIR / f"{voice}.wav"
+        if p.exists():
+            return str(p)
+        if Path(voice).exists():
+            return str(voice)
+    # 兜底：用默认参考音频（界面上只选模型，不选参考音频）
+    ref = default_ref_file()
+    if ref is not None:
+        return str(ref)
+    raise HTTPException(status_code=404, detail="找不到参考音频，请把 wav 放进 data/ref/")
 
 
 def ref_prompt_text(voice: str) -> str:
@@ -156,19 +199,41 @@ def merge_wavs(wav_bytes_list: list) -> bytes:
 # ---------- 接口 ----------
 @app.get("/api/health")
 def health():
-    """健康检查。engine_up 表示 GPT-SoVITS 引擎是否活着。"""
-    return {"status": "ok", "engine_up": is_engine_up()}
+    """健康检查。engine_up=声音引擎活着；translator_up=本地翻译（Ollama）活着。"""
+    return {
+        "status": "ok",
+        "engine_up": is_engine_up(),
+        "translator_up": is_translator_up(),
+    }
+
+
+@app.get("/api/models")
+def models():
+    """可用的训练模型（从权重目录扫出来，目录里有什么就显示什么）。"""
+    ms = list_models()
+    return {
+        "models": ms,
+        "active": ms[0]["id"] if ms else None,
+    }
 
 
 @app.get("/api/voices")
 def voices():
-    """可用的参考音频（音色）列表。"""
-    refs = list_ref_files()
-    # 附带每个音色一句试听
+    """
+    界面上的"选择模型"列表。
+    现在用户只选模型，不选参考音频：每个模型对应一条默认参考音频。
+    """
+    ref = default_ref_file()
+    if ref is None:
+        return {"voices": []}
+    ms = list_models()
+    if not ms:
+        # 没有训练权重：返回默认参考音频，当作零样本克隆
+        return {"voices": [{"name": "default", "label": "default", "char": "default", "path": str(ref)}]}
     return {
         "voices": [
-            {"name": r["name"], "char": r["char"], "path": r["path"]}
-            for r in refs
+            {"name": m["id"], "label": m["label"], "char": "model", "path": str(ref), "epoch": m["epoch"]}
+            for m in ms
         ]
     }
 
@@ -190,13 +255,31 @@ def synthesize_text(req: SynthesizeRequest):
     """
     合成一段语音。
 
-    流程：切句 -> 逐句调引擎 -> 拼接 -> 存 outputs/<时间戳>/ -> 返回可播放地址
+    流程：
+      1. 如果「输入语言」≠「输出语言」，先用本地 Qwen3 翻译
+      2. 按输出语言切句
+      3. 逐句调引擎合成 -> 拼接 -> 存盘
     """
-    text = (req.text or "").strip()
-    if not text:
+    raw_text = (req.text or "").strip()
+    if not raw_text:
         raise HTTPException(status_code=400, detail="文案是空的，先写点东西吧")
 
     lang = req.lang if req.lang in ("ja", "zh", "en") else "ja"
+    input_lang = req.input_lang if req.input_lang in ("ja", "zh", "en") else lang
+
+    # ---------- 翻译（输入语言 ≠ 输出语言时）----------
+    translated_text = raw_text
+    translated = False
+    if input_lang != lang:
+        try:
+            translated_text = translate(raw_text, input_lang, lang)
+            translated = True
+        except TranslateError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        if not translated_text.strip():
+            raise HTTPException(status_code=503, detail="翻译结果为空，请再试一次")
+
+    text = translated_text
 
     # 语气：自动就先判断，否则直接用用户选的（兼容前端的 'auto' 哨兵值）
     tone = req.tone
@@ -260,7 +343,10 @@ def synthesize_text(req: SynthesizeRequest):
     # 记录这次合成的元信息（历史里要用）
     meta = {
         "time": stamp,
-        "text": text,
+        "text": text,                      # 实际拿去合成的文本（翻译后的）
+        "original_text": raw_text,         # 用户原始输入
+        "input_lang": input_lang,
+        "translated": translated,
         "lang": lang,
         "voice": req.voice,
         "tone": tone,
@@ -284,6 +370,11 @@ def synthesize_text(req: SynthesizeRequest):
         "elapsed_ms": meta["elapsed_ms"],
         "seed": req.seed,
         "created_at": meta["created_at"],
+        "original_text": raw_text,
+        "translated_text": text,
+        "translated": translated,
+        "input_lang": input_lang,
+        "output_lang": lang,
     }
 
 
