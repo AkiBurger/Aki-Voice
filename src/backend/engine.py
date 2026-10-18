@@ -40,7 +40,9 @@ def synthesize(text: str, text_lang: str, ref_audio_path: str,
                speed_factor: float = 1.0,
                seed: int = -1, temperature: float = 0.8, top_k: int = 10,
                repetition_penalty: float = 1.2,
-               aux_ref_audio_paths: Optional[list] = None) -> bytes:
+               aux_ref_audio_paths: Optional[list] = None,
+               text_split_method: str = "cut3",
+               fragment_interval: float = 0.15) -> bytes:
     """
     调引擎合成一段语音，返回 wav 字节。
 
@@ -69,10 +71,10 @@ def synthesize(text: str, text_lang: str, ref_audio_path: str,
         "top_k": int(top_k),
         "top_p": 1,
         "temperature": float(temperature),
-        "text_split_method": "cut5",
+        "text_split_method": text_split_method,
         "batch_size": 1,
         "speed_factor": speed_factor,
-        "fragment_interval": 0.3,
+        "fragment_interval": fragment_interval,
         "seed": int(seed),
         "repetition_penalty": float(repetition_penalty),
         "media_type": "wav",

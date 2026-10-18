@@ -393,41 +393,43 @@ def synthesize_text(req: SynthesizeRequest):
     segments = []
     wavs = []
 
-    for i, sent in enumerate(sentences, 1):
-        # 同一秒内的重复任务会撞目录，保险起见拼个毫秒尾巴
-        seg_name = f"{i:03d}.wav"
-        seg_path = job_dir / seg_name
-        try:
-            wav_bytes = synthesize(
-                text=sent,
-                text_lang=lang,
-                ref_audio_path=ref_path,
-                prompt_lang=lang,
-                prompt_text=ref_prompt_text(ref_path),
-                speed_factor=req.speed,
-                seed=req.seed,
-                temperature=req.temperature,
-                top_k=req.top_k,
-                repetition_penalty=req.repetition_penalty,
-                aux_ref_audio_paths=aux_refs() if req.use_aux_ref else None,
-            )
-        except EngineError as e:
-            # 半路失败：把已经生成的段清掉，报人话
-            shutil.rmtree(job_dir, ignore_errors=True)
-            raise HTTPException(status_code=503, detail=str(e))
+    # 整段一次交给引擎：引擎自己按句子（cut3/cut4）切分并处理接缝，
+    # 比我们"逐句合成再拼接"自然得多 —— 拼接会产生 1 秒以上的怪停顿。
+    if lang == "en":
+        split_method = "cut4"      # 英文按 . 切
+    else:
+        split_method = "cut3"      # 中日文按 。 切
 
-        seg_path.write_bytes(wav_bytes)
-        wavs.append(wav_bytes)
+    try:
+        wav_bytes = synthesize(
+            text=text,
+            text_lang=lang,
+            ref_audio_path=ref_path,
+            prompt_lang=lang,
+            prompt_text=ref_prompt_text(ref_path),
+            speed_factor=req.speed,
+            seed=req.seed,
+            temperature=req.temperature,
+            top_k=req.top_k,
+            repetition_penalty=req.repetition_penalty,
+            aux_ref_audio_paths=aux_refs() if req.use_aux_ref else None,
+            text_split_method=split_method,
+            fragment_interval=0.15,
+        )
+    except EngineError as e:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        raise HTTPException(status_code=503, detail=str(e))
+
+    full_name = "full.wav"
+    (job_dir / full_name).write_bytes(wav_bytes)
+    wavs = [wav_bytes]
+
+    # 段落信息仅用于展示/统计（音频是引擎一次生成的整体）
+    for i, sent in enumerate(sentences, 1):
         segments.append({
             "index": i,
             "text": sent,
-            "file": f"{stamp}/{seg_name}",
-            "url": f"/static/output/{stamp}/{seg_name}",
         })
-
-    # 拼接成整段
-    full_name = "full.wav"
-    (job_dir / full_name).write_bytes(merge_wavs(wavs))
 
     # 记录这次合成的元信息（历史里要用）
     meta = {

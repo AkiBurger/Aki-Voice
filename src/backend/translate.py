@@ -106,6 +106,19 @@ def _split_for_translate(text: str) -> list:
     return chunks or [text]
 
 
+def _looks_broken(out: str, dst: str) -> bool:
+    """
+    译文质量粗检：中日文译文里混进成串英文字母，说明模型跑偏了。
+    （实测 Qwen 偶尔会在日文里插 "already" 这类英文，念出来会很怪）
+    """
+    if not out or not out.strip():
+        return True
+    if dst in ("ja", "zh"):
+        if re.search(r"[A-Za-z]{2,}", out):
+            return True
+    return False
+
+
 def translate_with_engine(text: str, src: str, dst: str):
     """
     把 text 从 src 语言翻译成 dst 语言，返回 (译文, 用的哪个引擎)。
@@ -132,12 +145,18 @@ def translate_with_engine(text: str, src: str, dst: str):
                 raise TranslateError(f"内置翻译失败：{type(e).__name__}")
             # Qwen 可用就继续往下走
 
-    # Qwen 优先
+    # Qwen 优先（但结果要过质量检查；不合格就退回内置专用模型）
     if qwen_up and ENGINE_MODE != "builtin":
         try:
             chunks = _split_for_translate(text)
             joiner = "" if dst == "zh" else " "
-            return joiner.join([_translate_chunk(c, src, dst).strip() for c in chunks]), "qwen"
+            qwen_out = joiner.join([_translate_chunk(c, src, dst).strip() for c in chunks])
+            if not _looks_broken(qwen_out, dst):
+                return qwen_out, "qwen"
+            # Qwen 跑偏（混入英文等）：用内置模型重翻
+            if builtin_ok:
+                return translate_local.translate(text, src, dst), "builtin-retry"
+            return qwen_out, "qwen"
         except TranslateError:
             if builtin_ok:
                 return translate_local.translate(text, src, dst), "builtin"
