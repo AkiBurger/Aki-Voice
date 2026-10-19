@@ -1,6 +1,6 @@
 /* ============================================================
    AkiBurger Voice · 合成台 前端逻辑
-   后端契约（见 README / 后端同事）：
+   后端接口约定（详见 README）：
      GET  /api/health     -> {"status":"ok","engine_up":bool}
      GET  /api/voices     -> [{"name","path","char"}]
      POST /api/synthesize {"text","lang","voice","tone"}
@@ -183,6 +183,8 @@
 
   function switchView(name) {
     if (!VIEW_NAMES.includes(name)) name = 'synth';
+    state.view = name;
+    hideError();
     VIEW_NAMES.forEach((v) => {
       const el = document.getElementById('view-' + v);
       if (el) el.classList.toggle('hidden', v !== name);
@@ -762,8 +764,10 @@
     for (const f of files) {
         const row = document.createElement('div');
         row.className = 'material-row';
-        const play = document.createElement('span');
+        const play = document.createElement('button');
+        play.type = 'button';
         play.className = 'history-play';
+        play.setAttribute('aria-label', '播放');
         setIcon(play, 'play');
         play.addEventListener('click', () => audioPlay('/api/material/audio?name=' + encodeURIComponent(f.name)));
         const name = document.createElement('span');
@@ -865,7 +869,7 @@
     if (!els.qcList) return;
     els.qcList.innerHTML = '';
     const items = ((qcLastReport && qcLastReport.items) || []).filter((it) =>
-      filter === 'all' ? it.level !== 'pass' : it.level === filter
+      filter === 'all' ? true : it.level === filter
     );
     if (els.qcFilter) {
       els.qcFilter.querySelectorAll('.filter-btn').forEach((b) => {
@@ -879,16 +883,18 @@
       els.qcList.appendChild(ok);
       return;
     }
-    for (const it of items.slice(0, 300)) {
+    for (const it of items) {
       const row = document.createElement('div');
       row.className = 'qc-row';
-      const play = document.createElement('span');
+      const play = document.createElement('button');
+      play.type = 'button';
       play.className = 'history-play';
+      play.setAttribute('aria-label', '播放');
       setIcon(play, 'play');
       play.addEventListener('click', () => audioPlay('/api/material/audio?name=' + encodeURIComponent(it.name)));
       const lv = document.createElement('span');
-      lv.className = 'lv-chip ' + (it.level === 'fail' ? 'lv-bad' : 'lv-mid');
-      lv.textContent = it.level === 'fail' ? '不合格' : '警告';
+      lv.className = 'lv-chip ' + (it.level === 'fail' ? 'lv-bad' : it.level === 'pass' ? 'lv-ok' : 'lv-mid');
+      lv.textContent = it.level === 'fail' ? '不合格' : it.level === 'pass' ? '通过' : '警告';
       const name = document.createElement('span');
       name.className = 'qc-name';
       name.textContent = it.name;
@@ -940,11 +946,13 @@
       els.annList.appendChild(empty);
       return;
     }
-    for (const e of entries.slice(0, 300)) {
+    for (const e of entries) {
       const row = document.createElement('div');
       row.className = 'ann-row';
-      const play = document.createElement('span');
+      const play = document.createElement('button');
+      play.type = 'button';
       play.className = 'history-play';
+      play.setAttribute('aria-label', '播放');
       setIcon(play, 'play');
       play.addEventListener('click', () => audioPlay('/api/material/audio?name=' + encodeURIComponent(e.name)));
       const meta = document.createElement('div');
@@ -967,6 +975,7 @@
           });
           save.textContent = '已保存';
           setTimeout(() => { save.textContent = '保存'; save.disabled = false; }, 1200);
+          loadAnnotations();
         } catch (err) {
           showError('保存失败', String(err.message || err));
           save.disabled = false;
@@ -984,6 +993,7 @@
     try {
       const d = await api('/api/data/status');
       const ready = d.clean_count > 0;
+      state.dataReady = ready;
       if (els.dataBadge) {
         els.dataBadge.textContent = ready ? `就绪 ${d.clean_count} 条` : (d.wav_count > 0 ? `仅导入 ${d.wav_count} 段` : '未导入');
         els.dataBadge.className = 'badge ' + (ready ? 'badge-ok' : 'badge-warn');
@@ -1166,6 +1176,7 @@
         els.prepareBtn.disabled = false;
         updateDataStatus();
         loadTrainData();
+        if (state.view === 'material') loadMaterials();
       }
     } catch (e) {
       dataJobTimer = setTimeout(pollDataJob, 3000);
@@ -1200,7 +1211,7 @@
       const running = st.running;
       els.trainBadge.textContent = running ? '训练中' : (st.success === true ? '已完成' : (st.success === false ? '失败/已停' : '空闲'));
       els.trainBadge.className = 'badge ' + (running ? 'badge-warn' : (st.success === true ? 'badge-ok' : (st.success === false ? 'badge-danger' : 'badge-neutral')));
-      els.trainStartBtn.disabled = running || !state.engineUp;
+      els.trainStartBtn.disabled = running || !state.engineUp || !state.dataReady;
       els.trainStopBtn.classList.toggle('hidden', !running);
       els.trainProgress.classList.toggle('hidden', !running && st.stage_index < 0 && !st.log_path);
 
@@ -1241,6 +1252,7 @@
     const ok = window.confirm(
       `开始训练？\n音色模型 ${s2} 轮 + 韵律模型 ${s1} 轮，预计 ${Math.round(s2 * 2 + s1 * 0.6)} 分钟左右。\n` +
       '模式：' + (fromScratch ? '从零训练（用预训练底模重新开始）' : '在现有权重基础上继续训练') + '\n' +
+      '开始训练时会先校验/重建预处理特征（文本、语义、hubert），数据有变动时旧特征会重算，可能要几分钟。\n' +
       `训练期间合成会变慢（显存被占用），建议先做完手头的合成。`
     );
     if (!ok) return;
@@ -1287,6 +1299,13 @@
     els.evalProgress.classList.remove('hidden');
     if (els.evalResult) els.evalResult.classList.add('hidden');
     els.evalProgressText.textContent = '正在合成测试句并打分，约 1.5 分钟…';
+    const progressTimer = setInterval(async () => {
+      try {
+        const st = await api('/api/eval/status');
+        const msg = st && (st.message || st.stage);
+        if (msg) els.evalProgressText.textContent = msg;
+      } catch (e) { /* 状态拿不到就算了 */ }
+    }, 1500);
     try {
       const res = await api('/api/evaluate', { method: 'POST' });
       if (!res || !res.ok || !res.result) throw new Error('评测没有返回结果');
@@ -1295,6 +1314,7 @@
     } catch (e) {
       showError('评测失败', String(e.message || e));
     } finally {
+      clearInterval(progressTimer);
       els.evalProgress.classList.add('hidden');
       els.evalBtn.textContent = '开始评测';
       els.evalBtn.disabled = !state.engineUp;
@@ -1396,8 +1416,10 @@
     for (const item of details) {
       const row = document.createElement('div');
       row.className = 'eval-detail-row';
-      const play = document.createElement('span');
+      const play = document.createElement('button');
+      play.type = 'button';
       play.className = 'history-play';
+      play.setAttribute('aria-label', '播放');
       setIcon(play, 'play');
       play.title = '播放';
       const txt = document.createElement('span');
@@ -1425,11 +1447,14 @@
     return 'lv-mid';
   }
 
+  let evalHistoryRecords = [];
+
   async function loadEvalHistory() {
     if (!els.evalHistory) return;
     try {
       const res = await api('/api/evaluations');
       const list = (res && res.evaluations) || [];
+      evalHistoryRecords = list;
       els.evalHistory.querySelectorAll('.eval-history-item').forEach((n) => n.remove());
       els.evalHistoryEmpty.hidden = list.length > 0;
       for (const e of list) {
@@ -1449,6 +1474,14 @@
         time.className = 'eval-h-time';
         time.textContent = formatTime(e.created_at || e.time);
         row.append(score, level, model, time);
+        row.title = '点击查看这次评测的明细';
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => {
+          const record = evalHistoryRecords.find((x) => x.time === e.time);
+          if (!record) return;
+          renderEvalResult(record);
+          if (els.evalResult) els.evalResult.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        });
         els.evalHistory.appendChild(row);
       }
     } catch (e) {
@@ -1594,7 +1627,9 @@
     const list = getPresets();
     let name = '';
     try {
-      name = (window.prompt('给这个预设起个名字（留空用时间命名）：', '预设 ' + (list.length + 1)) || '').trim();
+      const input = window.prompt('给这个预设起个名字（留空用时间命名）：', '预设 ' + (list.length + 1));
+      if (input === null) return;   // 取消
+      name = (input || '').trim();
     } catch (e) { name = ''; }
     if (!name) name = '预设 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
     const preset = {
@@ -1652,6 +1687,7 @@
   // ---------- 批量合成 ----------
   const ALLOWED_TONES = ['auto', '平静', '开心', '悲伤', '生气', '惊讶', '害怕'];
   let batchRunning = false;
+  let batchAbort = null;
 
   function parseBatchLines() {
     const lines = els.batchInput.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -1715,10 +1751,12 @@
       const { row, status } = buildBatchItem(i, item);
       els.batchResults.appendChild(row);
       status.textContent = '合成中…';
+      batchAbort = new AbortController();
       try {
         const res = await api('/api/synthesize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: batchAbort.signal,
           body: JSON.stringify({ text: item.text, lang: state.lang, input_lang: state.inputLang, voice, tone: item.tone, seed: state.seed, temperature: state.temperature }),
         });
         if (res && res.ok && res.audio_url) {
@@ -1735,12 +1773,18 @@
           throw new Error(res && res.message ? res.message : '没有返回音频');
         }
       } catch (e) {
-        status.innerHTML = iconHtml('alert-triangle') + ' 失败：' + String(e.message || e).slice(0, 60);
-        status.className = 'batch-status fail';
+        if (!batchRunning) {
+          status.textContent = '已停止';
+          status.className = 'batch-status';
+        } else {
+          status.innerHTML = iconHtml('alert-triangle') + ' 失败：' + String(e.message || e).slice(0, 60);
+          status.className = 'batch-status fail';
+        }
       }
     }
 
     batchRunning = false;
+    batchAbort = null;
     els.batchStartBtn.disabled = !state.engineUp;
     els.batchStopBtn.classList.add('hidden');
     loadHistory();
@@ -1761,8 +1805,10 @@
     const row = document.createElement('div');
     row.className = 'history-item';
 
-    const play = document.createElement('span');
+    const play = document.createElement('button');
+    play.type = 'button';
     play.className = 'history-play';
+    play.setAttribute('aria-label', '播放');
     setIcon(play, 'play');
 
     const body = document.createElement('div');
@@ -1791,6 +1837,8 @@
     if (!item.audio_url) dl.classList.add('hidden');
     // 下载文件名带这条记录的时间戳，不要都叫 full.wav
     dl.setAttribute('download', 'voice_' + (item.time || downloadStamp(new Date())) + '.wav');
+    // 点下载图标只下载，不要触发整行播放
+    dl.addEventListener('click', (e) => e.stopPropagation());
 
     // 删除这一条
     const del = document.createElement('button');
@@ -1806,6 +1854,9 @@
       try {
         await api('/api/history/' + encodeURIComponent(item.time), { method: 'DELETE' });
         row.remove();
+        if (els.downloadLink && (els.downloadLink.getAttribute('href') || '').endsWith(item.audio_url || '\u0000')) {
+          resetResultArea();
+        }
         if (!els.historyList.querySelector('.history-item')) els.historyEmpty.hidden = false;
         if (els.clearHistoryBtn && !els.historyList.querySelector('.history-item')) els.clearHistoryBtn.hidden = true;
       } catch (err) {
@@ -1818,7 +1869,7 @@
 
     const url = item.audio_url;
     row.addEventListener('click', (e) => {
-      if (e.target === dl) return;
+      if (e.target.closest && e.target.closest('.history-dl')) return;
       if (!url) return;
       const playing = row.classList.contains('playing');
       // 先停掉所有来源（结果播放器/批量/其它历史/素材试听），再决定是否播放这一条
@@ -1860,6 +1911,10 @@
     els.errorBox.classList.remove('hidden');
     els.errorTitle.textContent = title;
     els.errorDesc.textContent = desc;
+    // 错误框在合成页里，别的页面出错要额外弹提示，否则用户看不到
+    if (state.view && state.view !== 'synth') {
+      showToast(title + '：' + desc);
+    }
   }
   function hideError() {
     els.errorBox.classList.add('hidden');
@@ -1995,6 +2050,33 @@
     });
   }
 
+  // 清空或删除后，结果区可能指向已经删掉的文件，统一复位
+  function resetResultArea() {
+    stopAll();
+    state.abResults = [];
+    const resultSection = document.getElementById('resultSection');
+    const resultAudio = document.getElementById('resultAudio');
+    const resultMeta = document.getElementById('resultMeta');
+    const translatedBox = document.getElementById('translatedBox');
+    const downloadLink = document.getElementById('downloadLink');
+    const abCompare = document.getElementById('abCompare');
+    const waveCanvas = document.getElementById('waveCanvas');
+    if (resultAudio) {
+      try { resultAudio.pause(); } catch (e) { /* 忽略 */ }
+      resultAudio.removeAttribute('src');
+      try { resultAudio.load(); } catch (e) { /* 忽略 */ }
+    }
+    if (resultSection) resultSection.classList.add('hidden');
+    if (translatedBox) translatedBox.textContent = '';
+    if (resultMeta) resultMeta.textContent = '';
+    if (downloadLink) downloadLink.removeAttribute('href');
+    if (abCompare) abCompare.classList.add('hidden');
+    if (waveCanvas) {
+      const ctx = waveCanvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+    }
+  }
+
   // 清空全部历史
   if (els.clearHistoryBtn) {
     els.clearHistoryBtn.addEventListener('click', async () => {
@@ -2004,6 +2086,7 @@
       try {
         await api('/api/history', { method: 'DELETE' });
         renderHistory([]);
+        resetResultArea();
       } catch (err) {
         showError('清空失败', String(err.message || err));
       } finally {
@@ -2022,21 +2105,23 @@
 
   els.batchInput.addEventListener('input', updateBatchCount);
   els.batchStartBtn.addEventListener('click', startBatch);
-  els.batchStopBtn.addEventListener('click', () => { batchRunning = false; });
+  els.batchStopBtn.addEventListener('click', () => {
+    batchRunning = false;
+    if (batchAbort) batchAbort.abort();
+  });
 
   els.voiceSelect.addEventListener('change', () => {
     if (els.voiceSelect.value) {
       // 记不住选择不影响使用，localStorage 不可用时静默跳过
       try { localStorage.setItem('abv:voice', els.voiceSelect.value); } catch (e) { /* 忽略 */ }
-      // 换了模型，之前的质检/标注结果不再对应，清掉
-      clearQcResult(true);
-      clearAnnResult(true);
+      // 质检/标注对应的是数据本身，换模型不影响，不要清
+      updateModelBadges();
     }
   });
 
   // 快捷键：Ctrl+Enter 合成；空格 播放/暂停结果（焦点不在输入框时）
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && state.view === 'synth') {
       e.preventDefault();
       synthesize();
       return;
@@ -2051,6 +2136,12 @@
         if (els.resultAudio.paused) els.resultAudio.play(); else els.resultAudio.pause();
       }
     }
+  });
+
+  // 浏览器前进/后退切页
+  window.addEventListener('hashchange', () => {
+    const name = location.hash.replace('#', '');
+    if (name && name !== state.view) switchView(name);
   });
 
   // 引擎断线轮询（每 12 秒查一次，回来了自动恢复）

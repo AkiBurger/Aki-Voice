@@ -82,12 +82,12 @@ def run_step(title, script, env_extra, retries=2):
         p = subprocess.run([PY, "-s", script], cwd=str(SOVITS_ROOT), env=env)
         dt = (time.time() - t0) / 60
         if p.returncode == 0:
-            print(f"✅ {title} 完成，用时 {dt:.1f} 分钟", flush=True)
+            print(f"[OK] {title} 完成，用时 {dt:.1f} 分钟", flush=True)
             return
-        print(f"⚠️ 第 {attempt} 次失败（返回码 {p.returncode}），{'重试...' if attempt < retries else '已达最大重试次数'}",
+        print(f"[注意] 第 {attempt} 次失败（返回码 {p.returncode}），{'重试...' if attempt < retries else '已达最大重试次数'}",
               flush=True)
         time.sleep(3)
-    sys.exit(f"❌ {title} 失败（已重试 {retries} 次）")
+    sys.exit(f"[失败] {title} 失败（已重试 {retries} 次）")
 
 
 def _now_stamp() -> str:
@@ -108,12 +108,12 @@ def _move_to_backup(src: Path, backup_dir: Path, tag: str):
             src.rename(renamed)
             print(f"  ↦ 已改名避让: {src.name} → {renamed.name}（{e}）", flush=True)
         except OSError:
-            print(f"  ⚠️ 无法移动 {src.name}：{e}", flush=True)
+            print(f"  [注意] 无法移动 {src.name}：{e}", flush=True)
 
 
 def backup_old_training_artifacts(from_scratch: bool):
     """
-    训练前清理旧训练产物，修两个 P1 问题：
+    训练前清理旧训练产物：
 
     1. 二次训练崩溃：s1_train 会自动加载 logs_s1_<版本>/ckpt 里的旧 checkpoint，
        torch.load 报 "Weights only load failed: WindowsPath"。
@@ -213,7 +213,7 @@ def clear_stale_prep_products():
       6-name2semantic*.tsv / 7-sv_cn
     合并产物（merge_parts 生成）也要删，否则会拿旧的合并文件训练。
     """
-    print("⚠️ 素材指纹变了：清掉受影响的特征产物，准备重算", flush=True)
+    print("[注意] 素材指纹变了：清掉受影响的特征产物，准备重算", flush=True)
     targets = [
         "2-name2text-0.txt", "2-name2text.txt",
         "6-name2semantic-0.tsv", "6-name2semantic.tsv",
@@ -233,7 +233,7 @@ def clear_stale_prep_products():
 def prep_dataset():
     """数据集制作四步（v2Pro 需要额外的音色特征提取）。"""
     if not CLEAN_LIST.exists():
-        sys.exit(f"❌ 找不到清洗后的数据 {CLEAN_LIST}，先跑 clean_data.py")
+        sys.exit(f"[失败] 找不到清洗后的数据 {CLEAN_LIST}，先跑 clean_data.py")
     data_list = CLEAN_LIST
 
     lines = [l for l in data_list.read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -299,7 +299,7 @@ def merge_parts():
     if t0.exists() and not t_all.exists():
         lines = t0.read_text(encoding="utf-8").strip("\n").split("\n")
         t_all.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(f"✅ 文字特征合并：{len(lines)} 行 → {t_all.name}")
+        print(f"[OK] 文字特征合并：{len(lines)} 行 → {t_all.name}")
 
     # 语义 token：6-name2semantic-0.tsv -> 6-name2semantic.tsv（要带表头）
     s0 = OPT_DIR / "6-name2semantic-0.tsv"
@@ -307,7 +307,7 @@ def merge_parts():
     if s0.exists() and not s_all.exists():
         lines = s0.read_text(encoding="utf-8").strip("\n").split("\n")
         s_all.write_text("item_name\tsemantic_audio\n" + "\n".join(lines) + "\n", encoding="utf-8")
-        print(f"✅ 语义 token 合并：{len(lines)} 行 → {s_all.name}")
+        print(f"[OK] 语义 token 合并：{len(lines)} 行 → {s_all.name}")
 
 
 def train_sovits():
@@ -332,7 +332,7 @@ def train_sovits():
         try:
             src["train"]["learning_rate"] = float(S2_LR)
         except ValueError:
-            print(f"⚠️ 学习率格式不对，忽略: {S2_LR}")
+            print(f"[注意] 学习率格式不对，忽略: {S2_LR}")
     src["train"].update({
         "if_save_latest": True,
         "if_save_every_weights": True,
@@ -358,8 +358,8 @@ def train_sovits():
     p = subprocess.run([PY, "-s", "GPT_SoVITS/s2_train.py", "--config", str(cfg_path)],
                        cwd=str(SOVITS_ROOT), env=env)
     if p.returncode != 0:
-        sys.exit(f"❌ SoVITS 训练失败（返回码 {p.returncode}）")
-    print(f"✅ SoVITS 训练完成，用时 {(time.time()-t0)/60:.1f} 分钟", flush=True)
+        sys.exit(f"[失败] SoVITS 训练失败（返回码 {p.returncode}）")
+    print(f"[OK] SoVITS 训练完成，用时 {(time.time()-t0)/60:.1f} 分钟", flush=True)
 
 
 def train_gpt():
@@ -368,7 +368,7 @@ def train_gpt():
     # 训练输入检查：文件缺失时给明确错误，而不是让 s1_train 空转/卡死
     for need in ("6-name2semantic.tsv", "2-name2text.txt"):
         if not (OPT_DIR / need).exists():
-            sys.exit(f"❌ 缺少训练输入 {OPT_DIR / need}，请先完整跑一次数据准备（不要只跑 gpt）")
+            sys.exit(f"[失败] 缺少训练输入 {OPT_DIR / need}，请先完整跑一次数据准备（不要只跑 gpt）")
     # 从零训练：挪走旧 ckpt —— s1_train 的 torch.load 加载旧 checkpoint
     # 会报 "Weights only load failed: WindowsPath"，不挪走二次训练必崩
     backup_old_training_artifacts(FROM_SCRATCH)
@@ -394,7 +394,7 @@ def train_gpt():
         try:
             src["train"]["lr"] = float(S1_LR)
         except ValueError:
-            print(f"⚠️ 学习率格式不对，忽略: {S1_LR}")
+            print(f"[注意] 学习率格式不对，忽略: {S1_LR}")
     src["pretrained_s1"] = S1
     src["train_semantic_path"] = str(OPT_DIR / "6-name2semantic.tsv")
     src["train_phoneme_path"] = str(OPT_DIR / "2-name2text.txt")
@@ -419,8 +419,8 @@ def train_gpt():
     p = subprocess.run([PY, "-s", "GPT_SoVITS/s1_train.py", "--config_file", str(cfg_path)],
                        cwd=str(SOVITS_ROOT), env=env)
     if p.returncode != 0:
-        sys.exit(f"❌ GPT 训练失败（返回码 {p.returncode}）")
-    print(f"✅ GPT 训练完成，用时 {(time.time()-t0)/60:.1f} 分钟", flush=True)
+        sys.exit(f"[失败] GPT 训练失败（返回码 {p.returncode}）")
+    print(f"[OK] GPT 训练完成，用时 {(time.time()-t0)/60:.1f} 分钟", flush=True)
 
 
 def main():

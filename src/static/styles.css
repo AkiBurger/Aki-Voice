@@ -1,7 +1,6 @@
 /* ============================================================
    AkiBurger Voice · 合成台
    权威规范：design-system/akiburger-voice/MASTER.md
-   （来源：ui-ux-pro-max 技能库检索 + Lead 校订）
 
    设计基调：Adobe Spectrum 式深色创作工具
    - 深靛蓝黑表面层级 + 暖橙唯一主 CTA
@@ -24,7 +23,7 @@
   /* ===== 文字 ===== */
   --fg: #f8fafc;              /* 主文字 */
   --fg-muted: #94a3b8;        /* 次要文字 */
-  --fg-faint: #64748b;        /* 占位/禁用（仅非关键信息） */
+  --fg-faint: #8494ab;        /* 占位/禁用（仅非关键信息；surface-3 上 4.7:1） */
 
   /* ===== 品牌与交互 ===== */
   --primary: #6366f1;         /* 品牌/激活/边框 */
@@ -1173,10 +1172,14 @@ a { color: var(--primary-text); }
   flex-shrink: 0;
   width: 24px;
   height: 24px;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
   background: var(--primary-soft);
   color: var(--primary-text);
+  font: inherit;
   font-size: 10px;
+  cursor: pointer;
 }
 .history-body { flex: 1 1 auto; min-width: 0; }
 .history-text {
