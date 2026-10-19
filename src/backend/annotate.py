@@ -66,7 +66,7 @@ def save_text(wav_path: str, text: str) -> dict:
     text = (text or "").strip()
     if not LIST_FILE.exists():
         raise FileNotFoundError("还没有标注文件")
-    # P2 修复：竖线和换行都会破坏 .list 的单行格式
+    # 竖线和换行都会破坏 .list 的单行格式
     if "|" in text:
         raise ValueError("文本里不能有 | 符号")
     if "\n" in text or "\r" in text:
@@ -96,7 +96,7 @@ def save_text(wav_path: str, text: str) -> dict:
         for old in backups[:-10]:
             old.unlink(missing_ok=True)
 
-        # P2 修复：先写临时文件再原子替换，中途崩溃不会截断整个标注
+        # 先写临时文件再原子替换，中途崩溃不会截断整个标注
         tmp = LIST_FILE.with_name(LIST_FILE.name + ".tmp")
         tmp.write_text("\n".join(out), encoding="utf-8")
         os.replace(tmp, LIST_FILE)

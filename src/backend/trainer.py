@@ -62,7 +62,7 @@ _state = {
 }
 _lines = deque(maxlen=400)
 _lock = threading.Lock()
-_start_lock = threading.Lock()      # 防止连点两次"开始训练"起两份（P1 修复）
+_start_lock = threading.Lock()      # 防止连点两次"开始训练"起两份
 
 
 def _reader(proc, log_path):
@@ -141,7 +141,7 @@ def _attach_new_weights():
     """
     训练完成后把「本次训练产出的」权重挂到引擎上。
 
-    规则（P1 修复）：
+    规则：
     - 只挂本次训练新建/改写的权重文件（训练前做文件名快照 + 开始时间戳）
     - 不再按全局 mtime 取最新（会挂到别的实验或旧模型）
     - 挂载必须校验 HTTP 200，失败要写进日志
@@ -294,7 +294,7 @@ def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: i
 
 def _kill_tree(pid: int) -> None:
     """
-    杀掉整个进程树（P1 修复）。
+    杀掉整个进程树。
     train.py 会再起 s2_train / s1_train 子进程，只 terminate 父进程
     会在 Windows 上留下占显存的孤儿进程。
     """

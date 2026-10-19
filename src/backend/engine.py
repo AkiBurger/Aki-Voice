@@ -32,7 +32,7 @@ _attached = {"sovits": None, "gpt": None}
 
 def set_models(sovits_file: str = "", gpt_file: str = "") -> None:
     """
-    切换引擎当前使用的权重（P1 修复：界面选模型要真的生效）。
+    切换引擎当前使用的权重（界面选模型要真的生效）。
     文件名相对 GPT-SoVITS 根目录，如 "SoVITS_weights_v2Pro/xxx.pth"。
     已挂载过的会跳过，避免重复加载。
     """
@@ -127,7 +127,7 @@ def synthesize(text: str, text_lang: str, ref_audio_path: str,
         raise EngineError("合成超时了。这段可能太长，试着切成短句再试")
 
     if r.status_code == 200:
-        # P2 修复：校验真的是 wav，别把空响应/HTML 错误页存成音频
+        # 校验真的是 wav，别把空响应/HTML 错误页存成音频
         body = r.content or b""
         if len(body) < 44 or not (body[:4] == b"RIFF" and body[8:12] == b"WAVE"):
             ct = r.headers.get("Content-Type", "?")

@@ -38,11 +38,11 @@ from text_split import estimate_seconds, split_sentences
 from translate import TranslateError, is_translator_up, translate, translate_with_engine
 
 import evaluate as evaluator   # 声纹打分（评测用）
-import trainer                 # 训练任务管理（第三期）
-import data_prep               # 训练素材：导入/识别/清洗（第三期）
+import trainer
+import data_prep
 import folder_picker             # 文件夹选择框
-import qc                      # 质检（第四期）
-import annotate                # 标注（第四期）
+import qc
+import annotate
 
 # ---------- 路径 ----------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # voice-studio/
@@ -66,7 +66,7 @@ PORT = 8017
 
 app = FastAPI(title="AkiBurger Voice")
 
-_synth_lock = threading.Lock()        # 同一时间只跑一个合成（P2 修复：防并发抢显存）
+_synth_lock = threading.Lock()        # 同一时间只跑一个合成（防并发抢显存）
 _eval_lock = threading.Lock()          # 评测互斥
 
 
@@ -94,7 +94,7 @@ async def no_cache_static(request, call_next):
     return response
 
 
-# ---------- 本机访问守卫（P1 修复：防 CSRF / DNS rebinding）----------
+# ---------- 本机访问守卫（防 CSRF / DNS rebinding）----------
 # 只接受本机 Host；跨站 POST/DELETE 一律拒绝（浏览器发 Origin/Sec-Fetch-Site 时校验）。
 ALLOWED_HOSTS = {"127.0.0.1:8017", "localhost:8017"}
 ALLOWED_ORIGINS = {"http://127.0.0.1:8017", "http://localhost:8017"}
@@ -239,8 +239,7 @@ def _pick_gpt_file(epoch: int):
 
 def switch_model_if_needed(voice: str) -> None:
     """
-    如果界面选的是某个模型（如 e2），把引擎权重切过去。
-    P1 修复：之前选模型只是换个下拉框，引擎权重从来没变。
+    如果界面选的是某个模型（如 e2），把引擎权重切到它。
     """
     if not voice:
         return
@@ -262,10 +261,10 @@ def find_ref_file(voice: str, tone: str = "") -> str:
     """
     找到这次合成该用的参考音频绝对路径。
 
-    安全约束（P0 修复）：
+    安全约束：
     - 只允许 data/ref 目录下的 wav
     - voice 可以是文件名（setsuna_1006_0429_02）或模型 id（e2，走默认参考音频）
-    - **禁止**任意本地路径（之前 /api/preview?voice=D:\\xxx 能读任意文件）
+    - 禁止传任意本地路径
     """
     if voice:
         # 1) 按文件名找（去掉可能的目录部分，不用用户给的路径本身）
@@ -360,7 +359,7 @@ class ToneRequest(BaseModel):
 
 @app.post("/api/tone")
 def judge_tone_api(req: ToneRequest):
-    """判断文本语气（前端输入停顿后调用，之前 404）。"""
+    """判断文本语气（前端输入停顿后调用）。"""
     try:
         return judge_tone(req.text or "", req.lang if req.lang in ("ja", "zh", "en") else "ja")
     except Exception as e:
@@ -436,7 +435,7 @@ def voices():
 
 @app.get("/api/preview")
 def preview(voice: str):
-    """试听参考音频：只允许 data/ref 下登记的 wav（P0 修复：不再能读任意文件）。"""
+    """试听参考音频：只允许 data/ref 下登记的 wav（不再能读任意文件）。"""
     # 严格模式：给了 voice 就必须能找到（模型 id 会映射到默认参考音频），不静默回退
     if voice:
         cand = REF_DIR / f"{Path(voice).name}.wav"
@@ -468,7 +467,7 @@ def synthesize_text(req: SynthesizeRequest):
         raise HTTPException(status_code=400, detail="文案是空的，先写点东西吧")
     if len(raw_text) > 5000:
         raise HTTPException(status_code=400, detail=f"文本太长了（{len(raw_text)} 字），单次最多 5000 字，请分段合成")
-    # 同一时间只跑一个合成，避免并发抢显存（P2 修复）
+    # 同一时间只跑一个合成，避免并发抢显存
     if not _synth_lock.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="正在合成上一段，等它完成再点")
     try:
@@ -533,7 +532,7 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
             text=text,
             text_lang=lang,
             ref_audio_path=ref_path,
-            prompt_lang="ja",      # 参考音频/参考文本始终是日语（P1 修复）
+            prompt_lang="ja",      # 参考音频/参考文本始终是日语
             prompt_text=ref_prompt_text(ref_path),
             speed_factor=req.speed,
             seed=req.seed,
@@ -662,7 +661,7 @@ def delete_history_item(stamp: str):
 def clear_history():
     """
     清空合成历史。
-    P1 修复：只删带 meta.json 的真正合成记录，不碰 outputs/_eval（评测音频）、
+    只删带 meta.json 的真正合成记录，不碰 outputs/_eval（评测音频）、
     _compare（对比样本）等非合成目录。
     """
     count = 0
@@ -881,7 +880,7 @@ def train_status():
 @app.post("/api/train/start")
 def train_start(req: TrainStartRequest):
     """开始训练（后台跑，不卡界面）。"""
-    # 素材导入/识别还在跑时不允许开训，否则会读到半截数据（P1 修复）
+    # 素材导入/识别还在跑时不允许开训，否则会读到半截数据
     if data_prep.is_busy():
         raise HTTPException(status_code=400, detail="素材导入/识别还在跑，等它结束再开始训练")
     e2 = max(1, min(20, int(req.epochs_s2)))
@@ -895,11 +894,7 @@ def train_start(req: TrainStartRequest):
         lr_s2=float(req.lr_s2 or 0), lr_s1=float(req.lr_s1 or 0),
         auto_eval=bool(req.auto_eval),
     )
-    # from_scratch 由 trainer.start 支持；并行开发期若还没加参数则自动降级
-    try:
-        res = trainer.start(**start_kwargs, from_scratch=bool(req.from_scratch))
-    except TypeError:
-        res = trainer.start(**start_kwargs)
+    res = trainer.start(**start_kwargs, from_scratch=bool(req.from_scratch))
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("message", "启动失败"))
     return res
@@ -971,7 +966,7 @@ def _load_eval_history() -> list:
 
 def _save_eval_history(items: list) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    # 原子写：先写临时文件再替换，避免写一半崩溃把评测历史清空（P2 修复）
+    # 原子写：先写临时文件再替换，避免写一半崩溃把评测历史清空
     tmp = EVAL_HISTORY.with_name(EVAL_HISTORY.name + ".tmp")
     tmp.write_text(json.dumps(items[-50:], ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, EVAL_HISTORY)
@@ -1010,7 +1005,7 @@ def run_evaluate():
     """
     if not evaluator.is_available():
         raise HTTPException(status_code=503, detail="声纹模型不可用，没法打分")
-    # 评测互斥：并发评测会重复合成、抢显存（P2 修复）
+    # 评测互斥：并发评测会重复合成、抢显存
     if not _eval_lock.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="已经在评测中，等这次跑完")
     try:

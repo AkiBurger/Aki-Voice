@@ -14,6 +14,16 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // 图标统一走 index.html 里的 SVG symbol，避免在 JS 里写字符图标
+  function iconHtml(name, cls) {
+    return '<svg class="icon' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+  }
+
+  function setIcon(el, name) {
+    if (el) el.innerHTML = iconHtml(name);
+  }
+
+
   // ---------- 状态 ----------
   const state = {
     lang: 'ja',               // 输出语言
@@ -319,7 +329,7 @@
       const up = Boolean(h && h.engine_up);
       setEngineUp(up, up ? null : 'engine');
       updateTranslatorBadge(Boolean(h && h.translator_up));
-      // 历史不依赖引擎（P2 修复）：引擎没就绪时也把上次的合成记录列出来
+      // 历史不依赖引擎：引擎没就绪时也把上次的合成记录列出来
       await loadHistory();
       if (up) {
         await Promise.all([loadVoices(), loadEvalHistory()]);
@@ -457,7 +467,7 @@
         els.toneDetected.hidden = false;
         els.toneDetectedName.textContent = res.tone;
         els.toneDetectedConf.textContent = '置信度 ' + (res.confidence || '一般');
-        // 保留 auto 状态：只展示建议，真正判断交给后端合成时做（P2 修复）
+        // 保留 auto 状态：只展示建议，真正判断交给后端合成时做
         return;
       }
       throw new Error('no tone');
@@ -466,7 +476,7 @@
       els.toneDetected.hidden = false;
       els.toneDetectedName.textContent = g.tone;
       els.toneDetectedConf.textContent = '置信度 ' + g.confidence + '（本地规则）';
-      // 本地规则也只做展示，不改状态（P2 修复）
+      // 本地规则也只做展示，不改状态
     }
   }
 
@@ -492,7 +502,7 @@
     hideError();
     state.inFlight = true;
     els.synthBtn.disabled = true;
-    els.synthBtn.querySelector('.btn-label').textContent = '⏳ 合成中…';
+    els.synthBtn.querySelector('.btn-label').textContent = '合成中…';
     els.synthProgress.classList.remove('hidden');
     const translating = state.inputLang !== state.lang;
     els.progressText.textContent = translating
@@ -564,7 +574,7 @@
     els.historyList.querySelectorAll('.history-item.playing').forEach((n) => {
       n.classList.remove('playing');
       const p = n.querySelector('.history-play');
-      if (p) p.textContent = '▶';
+      if (p) setIcon(p, 'play');
     });
   }
 
@@ -727,7 +737,7 @@
         row.className = 'material-row';
         const play = document.createElement('span');
         play.className = 'history-play';
-        play.textContent = '▶';
+        setIcon(play, 'play');
         play.addEventListener('click', () => audioPlay('/api/material/audio?name=' + encodeURIComponent(f.name)));
         const name = document.createElement('span');
         name.className = 'material-name';
@@ -856,7 +866,7 @@
       row.className = 'qc-row';
       const play = document.createElement('span');
       play.className = 'history-play';
-      play.textContent = '▶';
+      setIcon(play, 'play');
       play.addEventListener('click', () => audioPlay('/api/material/audio?name=' + encodeURIComponent(it.name)));
       const lv = document.createElement('span');
       lv.className = 'lv-chip ' + (it.level === 'fail' ? 'lv-bad' : 'lv-mid');
@@ -917,7 +927,7 @@
       row.className = 'ann-row';
       const play = document.createElement('span');
       play.className = 'history-play';
-      play.textContent = '▶';
+      setIcon(play, 'play');
       play.addEventListener('click', () => audioPlay('/api/material/audio?name=' + encodeURIComponent(e.name)));
       const meta = document.createElement('div');
       meta.className = 'ann-meta';
@@ -1153,7 +1163,7 @@
       const d = await api('/api/train/data');
       els.trainData.textContent = d.ready
         ? `数据就绪：${d.wav_count} 段音频 · 约 ${d.duration_min} 分钟 · 清洗后 ${d.clean_count} 条标注`
-        : '⚠️ 训练数据还不齐（需要 wav 音频 + 清洗后的标注文件）';
+        : '训练数据还不齐（需要 wav 音频 + 清洗后的标注文件）';
     } catch (e) {
       els.trainData.textContent = '训练数据检查失败';
     }
@@ -1370,7 +1380,7 @@
       row.className = 'eval-detail-row';
       const play = document.createElement('span');
       play.className = 'history-play';
-      play.textContent = '▶';
+      setIcon(play, 'play');
       play.title = '播放';
       const txt = document.createElement('span');
       txt.className = 'eval-detail-text';
@@ -1525,7 +1535,7 @@
     const apply = document.createElement('button');
     apply.type = 'button';
     apply.className = 'preset-apply';
-    apply.textContent = '▶ 应用';
+    apply.textContent = '应用';
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'preset-delete';
@@ -1694,7 +1704,7 @@
           body: JSON.stringify({ text: item.text, lang: state.lang, input_lang: state.inputLang, voice, tone: item.tone }),
         });
         if (res && res.ok && res.audio_url) {
-          status.textContent = '✅';
+          setIcon(status, 'check');
           status.className = 'batch-status done';
           const audio = document.createElement('audio');
           audio.controls = true;
@@ -1707,7 +1717,7 @@
           throw new Error(res && res.message ? res.message : '没有返回音频');
         }
       } catch (e) {
-        status.textContent = '❌ 失败：' + String(e.message || e).slice(0, 60);
+        status.innerHTML = iconHtml('alert-triangle') + ' 失败：' + String(e.message || e).slice(0, 60);
         status.className = 'batch-status fail';
       }
     }
@@ -1735,7 +1745,7 @@
 
     const play = document.createElement('span');
     play.className = 'history-play';
-    play.textContent = '▶';
+    setIcon(play, 'play');
 
     const body = document.createElement('div');
     body.className = 'history-body';
@@ -1757,7 +1767,7 @@
 
     const dl = document.createElement('a');
     dl.className = 'history-dl';
-    dl.textContent = '⬇';
+    setIcon(dl, 'download');
     dl.title = '下载';
     dl.href = item.audio_url || '#';
     if (!item.audio_url) dl.classList.add('hidden');
@@ -1768,7 +1778,7 @@
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'history-del';
-    del.textContent = '🗑';
+    setIcon(del, 'trash-2');
     del.title = '删除这条记录';
     del.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -1799,10 +1809,10 @@
       const audio = new Audio(url);
       state.currentAudio = audio;
       row.classList.add('playing');
-      play.textContent = '❚❚';
+      setIcon(play, 'pause');
       audio.addEventListener('ended', () => {
         row.classList.remove('playing');
-        play.textContent = '▶';
+        setIcon(play, 'play');
         if (state.currentAudio === audio) state.currentAudio = null;
       });
       audio.play().catch(() => {});
@@ -1939,8 +1949,12 @@
   if (els.advToggleBtn) {
     els.advToggleBtn.addEventListener('click', () => {
       const hidden = els.advPanel.classList.toggle('hidden');
-      els.advToggleBtn.textContent = (hidden ? '▶' : '▼') + ' 音质微调（合成不满意时用）';
+      els.advToggleBtn.classList.toggle('open', !hidden);
+      els.advToggleBtn.setAttribute('aria-expanded', String(!hidden));
     });
+    els.advPanel.classList.add('hidden');
+    els.advToggleBtn.classList.remove('open');
+    els.advToggleBtn.setAttribute('aria-expanded', 'false');
   }
   if (els.tempRange) {
     els.tempRange.addEventListener('input', () => setTemperature(els.tempRange.value));

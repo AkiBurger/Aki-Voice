@@ -27,7 +27,8 @@
   --fg-faint: #64748b;        /* 占位/禁用（仅非关键信息） */
 
   /* ===== 品牌与交互 ===== */
-  --primary: #6366f1;         /* 品牌/激活/链接 */
+  --primary: #6366f1;         /* 品牌/激活/边框 */
+  --primary-text: #818cf8;    /* 文字用主色：按对比度微调亮度，surface-2 上 ≥4.5:1 */
   --primary-soft: rgba(99, 102, 241, 0.14);
   --accent: #f97316;          /* 唯一主 CTA（合成） */
   --on-accent: #0f172a;
@@ -108,7 +109,7 @@ textarea {
   color: inherit;
 }
 
-a { color: var(--primary); }
+a { color: var(--primary-text); }
 
 ::selection { background: var(--primary-soft); color: var(--fg); }
 
@@ -442,7 +443,7 @@ a { color: var(--primary); }
    ============================================================ */
 .card {
   min-width: 0;
-  padding: var(--s5);
+  padding: 20px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -582,7 +583,7 @@ a { color: var(--primary); }
   padding: 0;
   border: 0;
   background: none;
-  color: var(--primary);
+  color: var(--primary-text);
   font-size: var(--fs-label);
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -621,7 +622,10 @@ a { color: var(--primary); }
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
 }
-.badge-neutral { background: var(--surface-3); color: var(--fg-muted); }
+.badge-neutral {
+  background: color-mix(in srgb, var(--fg-muted) 12%, transparent);
+  color: var(--fg-muted);
+}
 
 /* ============================================================
    提示条（引擎未就绪 / 错误）
@@ -708,10 +712,9 @@ a { color: var(--primary); }
   min-width: 0;
 }
 
-.synth-actions { display: flex; align-items: stretch; gap: var(--s3); }
+.synth-actions { display: flex; align-items: center; gap: var(--s3); }
 .synth-actions .btn-batch {
   flex: 0 0 auto;
-  height: 40px;
   padding: 0 var(--s4);
 }
 
@@ -803,7 +806,7 @@ a { color: var(--primary); }
   font-size: var(--fs-body);
 }
 .tone-ai { width: 16px; height: 16px; color: var(--primary); }
-.tone-detected strong { color: var(--primary); }
+.tone-detected strong { color: var(--primary-text); }
 .tone-conf {
   padding: 0 8px;
   border: 1px solid var(--border);
@@ -1047,7 +1050,7 @@ a { color: var(--primary); }
   border: 1px solid var(--primary);
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--primary);
+  color: var(--primary-text);
   font-size: var(--fs-label);
   cursor: pointer;
   transition: background var(--motion), color var(--motion);
@@ -1172,7 +1175,7 @@ a { color: var(--primary); }
   height: 24px;
   border-radius: 50%;
   background: var(--primary-soft);
-  color: var(--primary);
+  color: var(--primary-text);
   font-size: 10px;
 }
 .history-body { flex: 1 1 auto; min-width: 0; }
@@ -1450,7 +1453,7 @@ a { color: var(--primary); }
   display: flex;
   align-items: center;
   gap: var(--s5);
-  padding: 20px var(--s5);
+  padding: 20px;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface-3);
@@ -1466,7 +1469,7 @@ a { color: var(--primary); }
 .eval-score-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .eval-level { color: var(--fg); font-size: var(--fs-h2); font-weight: 600; }
 .eval-level.lv-good { color: var(--success); }
-.eval-level.lv-ok { color: var(--primary); }
+.eval-level.lv-ok { color: var(--primary-text); }
 .eval-level.lv-mid { color: var(--warning); }
 .eval-level.lv-bad { color: var(--danger); }
 .eval-model {
@@ -1510,7 +1513,7 @@ a { color: var(--primary); }
   white-space: nowrap;
 }
 .lv-chip.lv-good { color: var(--success); }
-.lv-chip.lv-ok { color: var(--primary); }
+.lv-chip.lv-ok { color: var(--primary-text); }
 .lv-chip.lv-mid { color: var(--warning); }
 .lv-chip.lv-bad { color: var(--danger); }
 
@@ -1561,7 +1564,7 @@ a { color: var(--primary); }
   font-size: var(--fs-caption);
 }
 .eval-detail-score {
-  color: var(--primary);
+  color: var(--primary-text);
   font-family: var(--font-mono);
   font-size: var(--fs-mono);
   font-variant-numeric: tabular-nums;
@@ -1583,7 +1586,7 @@ a { color: var(--primary); }
   font-variant-numeric: tabular-nums;
 }
 .eval-history-item:last-child { border-bottom: 0; }
-.eval-h-score { width: 52px; color: var(--primary); font-family: var(--font-mono); font-size: var(--fs-mono); }
+.eval-h-score { width: 52px; color: var(--primary-text); font-family: var(--font-mono); font-size: var(--fs-mono); }
 .eval-h-level { width: 56px; flex-shrink: 0; }
 .eval-h-model {
   flex: 1 1 auto;
@@ -1708,9 +1711,6 @@ a { color: var(--primary); }
   }
 }
 
-/* 中性徽标（空闲等无风险状态） */
-.badge-neutral {
-  color: var(--fg-muted);
-  background: rgba(148, 163, 184, 0.12);
-  border-color: var(--border);
-}
+/* 折叠标题里的 chevron：展开时旋转 */
+.adv-toggle .icon { transition: transform 150ms ease; }
+.adv-toggle.open .icon { transform: rotate(180deg); }

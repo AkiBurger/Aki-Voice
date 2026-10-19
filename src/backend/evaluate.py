@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-# 找 GPT-SoVITS 根目录：环境变量优先，其次自动探测（P1 修复：找不到时不再崩在 import 阶段）
+# 找 GPT-SoVITS 根目录：环境变量优先，其次自动探测（找不到时不再崩在 import 阶段）
 import os as _os
 
 SOVITS_ROOT = None

@@ -37,7 +37,7 @@ _state = {
     "finished_at": None,
 }
 _logs = deque(maxlen=200)
-_task_lock = threading.Lock()      # 导入/识别互斥（P1 修复）
+_task_lock = threading.Lock()      # 导入/识别互斥
 _lock = threading.Lock()
 
 
@@ -100,7 +100,7 @@ def _convert_one(src: Path, dst: Path) -> bool:
 
 def start_import(path_str: str, max_samples: int = 0) -> dict:
     """把文件夹里的音频导入成训练用的 wav（后台跑）。"""
-    # 互斥（P1 修复）：扫描文件之前就要占住任务位，否则两个导入能同时开跑
+    # 互斥：扫描文件之前就要占住任务位，否则两个导入能同时开跑
     if not _task_lock.acquire(blocking=False):
         return {"ok": False, "message": "有任务在跑，等它结束"}
     try:
@@ -192,7 +192,7 @@ def start_prepare() -> dict:
         clean_file = DATA_DIR / "setsuna_clean.list"
         old_clean = _read_list(clean_file)      # 用户可能改过的标注
         old_raw = _read_list(list_file)         # 上一轮 ASR 原文（判断哪些是用户手改的）
-        # 先备份（P0 修复：识别会全量重写，先留退路）
+        # 先备份（识别会全量重写，先留退路）
         backup_dir = DATA_DIR / "list_backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -231,7 +231,7 @@ def start_prepare() -> dict:
             if p2.returncode != 0:
                 raise RuntimeError("清洗失败，详见日志")
 
-            # 3. 合并：保住用户手改过的文本（P0 修复）
+            # 3. 合并：保住用户手改过的文本
             kept = _merge_manual_edits(clean_file, old_clean, old_raw)
             if kept:
                 _say(f"已保留 {kept} 条你手动改过的标注")
@@ -272,7 +272,7 @@ def current_dataset() -> dict:
             if not line.strip():
                 continue
             wav_path = line.split("|")[0]
-            if Path(wav_path).exists():      # 只算音频还存在的（P1 修复）
+            if Path(wav_path).exists():      # 只算音频还存在的
                 clean_count += 1
     return {
         "wav_count": len(wavs),
@@ -322,7 +322,7 @@ def delete_materials(name: str = "", delete_all: bool = False) -> dict:
     trash.mkdir(parents=True, exist_ok=True)
 
     def _safe_target(name_: str) -> Path:
-        """只允许删除 wav 目录下的 .wav 文件（P0 修复：防路径穿越/搬走整目录）"""
+        """只允许删除 wav 目录下的 .wav 文件（防路径穿越/搬走整目录）"""
         if not name_:
             raise ValueError("要删哪个？")
         raw = str(name_).strip().replace("\\", "/")
@@ -355,10 +355,10 @@ def delete_materials(name: str = "", delete_all: bool = False) -> dict:
     if removed == 0 and not delete_all:
         raise FileNotFoundError(f"找不到文件：{name}")
 
-    # P1 修复：删了音频要同步清理两个标注清单，否则训练还在引用不存在的文件
-    if removed and delete_all:
-        _prune_lists()
-    elif removed and name:
+    # 全部清空是可恢复操作：标注保持原样，恢复素材后能重新对上
+    # 只删单条时才裁剪对应行，并且裁剪前先备份清单
+    if removed and not delete_all:
+        _backup_lists()
         _prune_lists([WAV_DIR / Path(name).name])
 
     return {
@@ -427,7 +427,7 @@ def restore_materials(batch: str = "") -> dict:
     restored, skipped = 0, 0
     for w in target.glob("*.wav"):
         dst = WAV_DIR / w.name
-        # P1 修复：目标已存在就跳过，不覆盖用户后来导入的新音频
+        # 目标已存在就跳过，不覆盖用户后来导入的新音频
         if dst.exists():
             skipped += 1
             continue
