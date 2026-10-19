@@ -679,12 +679,15 @@ a { color: var(--primary-text); }
   left: 50%;
   bottom: var(--s6);
   z-index: 999;
+  max-width: min(560px, calc(100vw - 32px));
   padding: 9px 18px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   background: var(--surface-3);
   color: var(--fg);
   font-size: var(--fs-caption);
+  line-height: 1.5;
+  text-align: center;
   box-shadow: var(--shadow-md);
   opacity: 0;
   pointer-events: none;
@@ -970,6 +973,15 @@ a { color: var(--primary-text); }
 .model-actions .btn-secondary { flex: 1 1 0; }
 .model-audio { width: 100%; margin-top: var(--s2); }
 
+/* 参考音频选择 */
+label[for="refSelect"] { margin-top: var(--s4); }
+.field-hint {
+  margin-top: 6px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 /* ---------------- 音质微调 ---------------- */
 .adv-head { display: flex; align-items: center; }
 .adv-toggle {
@@ -1235,6 +1247,26 @@ a { color: var(--primary-text); }
   color: var(--danger);
 }
 .history-del:disabled { opacity: 0.5; cursor: default; }
+
+/* 历史行：设为参考音频（图标按钮，与下载/删除同尺寸） */
+.history-ref {
+  flex-shrink: 0;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: var(--fs-caption);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background var(--motion), border-color var(--motion), color var(--motion);
+}
+.history-ref:hover:not(:disabled) {
+  background: var(--surface-1);
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+.history-ref:disabled { opacity: 0.5; cursor: default; }
 
 /* ============================================================
    素材 / 质检 / 标注：列表页

@@ -6,6 +6,7 @@ GPT-SoVITS 引擎客户端。
 参数细节见 api_v2.py；失败时引擎返回 400 + JSON。
 """
 import os
+import time
 import json
 from typing import Optional
 
@@ -48,18 +49,28 @@ def set_models(sovits_file: str = "", gpt_file: str = "") -> None:
             raise EngineError(f"切换韵律权重失败：{e}")
 
 
-def is_engine_up(timeout: float = 2.0) -> bool:
-    """引擎进程活着吗（/docs 是 FastAPI 自带页面，通了就算活着）。
-    引擎重启后会回到默认权重，所以探测到掉线时清空挂载缓存，下次合成重新挂。"""
+_last_ok_ts = 0.0          # 最近一次探测成功的时间
+_UP_GRACE_SEC = 60.0       # 合成期间引擎忙、/docs 可能超时，这段时间内先当它还活着
+
+
+def is_engine_up(timeout: float = 5.0) -> bool:
+    """引擎进程活着吗（/docs 通了就算活着）。
+    引擎重启后会回到默认权重，所以真的掉线时清空挂载缓存，下次合成重新挂。"""
+    global _last_ok_ts
     try:
         r = requests.get(f"{ENGINE_URL}/docs", timeout=timeout)
         up = r.status_code == 200
     except Exception:
         up = False
-    if not up:
-        _attached["sovits"] = None
-        _attached["gpt"] = None
-    return up
+    if up:
+        _last_ok_ts = time.time()
+        return True
+    # 探测失败可能只是引擎在合成（同步推理阻塞了 HTTP），刚成功过就再等等
+    if time.time() - _last_ok_ts < _UP_GRACE_SEC:
+        return True
+    _attached["sovits"] = None
+    _attached["gpt"] = None
+    return False
 
 
 def synthesize(text: str, text_lang: str, ref_audio_path: str,

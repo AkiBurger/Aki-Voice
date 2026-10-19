@@ -129,6 +129,7 @@ class SynthesizeRequest(BaseModel):
     lang: str = "ja"                    # 输出语言：ja | zh | en
     input_lang: str = ""                # 输入文本的语言；留空=与输出语言相同
     voice: str = ""                     # 模型 id（如 e2）；留空=默认
+    ref: str = ""                       # 指定参考音频（data/ref 下的文件名，如 hist_xxx）；留空=按现有逻辑挑
     tone: str = "自动"                  # 平静|开心|悲伤|生气|惊讶|害怕|自动
     # 参数范围限制（防止非法值把引擎/显存搞挂，也让 422 报错即时返回）：
     speed: float = Field(default=1.0, ge=0.5, le=2.0)             # 语速
@@ -164,9 +165,16 @@ def list_ref_files() -> list:
 
 
 def default_ref_file():
-    """默认参考音频：data/ref 下的第一段 wav。"""
+    """
+    默认参考音频：优先非 hist_ 前缀的（真实来源的参考），否则 data/ref 下第一段 wav。
+
+    为什么要排除 hist_：从历史固化的参考是按字母序排的（h < s），
+    会让"合成结果"反客为主变成默认参考；默认参考不该是一段合成产物。
+    """
     files = sorted(REF_DIR.glob("*.wav")) if REF_DIR.exists() else []
-    return files[0] if files else None
+    real = [f for f in files if not f.stem.startswith("hist_")]
+    pool = real or files
+    return pool[0] if pool else None
 
 
 MODEL_NAMES_FILE = DATA_DIR / "models.json"      # 用户自定义的模型名字
@@ -389,6 +397,55 @@ def ref_prompt_text(voice: str) -> str:
     return ""
 
 
+# ---- 参考音频的元信息（从历史固化的 ref 会记在这里）----
+REF_META_FILE = REF_DIR / "ref_meta.json"
+
+
+def _load_ref_meta() -> dict:
+    """读 data/ref/ref_meta.json → {stem: {text, source, created_at, model, tone, lang, duration}}"""
+    try:
+        if REF_META_FILE.exists():
+            return json.loads(REF_META_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_ref_meta(mapping: dict) -> None:
+    REF_DIR.mkdir(parents=True, exist_ok=True)
+    REF_META_FILE.write_text(json.dumps(mapping, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _ref_text_for_stem(stem: str) -> str:
+    """取某个参考音频的文本：优先 ref_meta.json，其次 ref_texts.json。"""
+    meta = _load_ref_meta().get(stem, {})
+    if meta.get("text"):
+        return meta["text"]
+    return ref_prompt_text(stem)
+
+
+def _ref_stem_from_name(name: str) -> str:
+    """把请求里的参考音频名规整成 stem（去目录、去 .wav 后缀）。"""
+    stem = Path((name or "").strip().replace("\\", "/")).name
+    if stem.lower().endswith(".wav"):
+        stem = stem[:-4]
+    return stem
+
+
+def _resolve_explicit_ref(name: str):
+    """
+    把请求指定的参考音频解析成 (路径, 文本, stem)。
+    只允许 data/ref 下的 wav；找不到抛 404。
+    """
+    stem = _ref_stem_from_name(name)
+    if not stem:
+        raise HTTPException(status_code=400, detail="参考音频名字不合法")
+    p = REF_DIR / f"{stem}.wav"
+    if not p.exists() or not _inside_ref_dir(p):
+        raise HTTPException(status_code=404, detail=f"找不到这个参考音频：{stem}")
+    return str(p), _ref_text_for_stem(stem), stem
+
+
 def _guess_prompt_lang(text: str) -> str:
     """
     猜参考音频/参考文本的语言，给 prompt_lang 用。
@@ -589,6 +646,168 @@ def preview(voice: str):
     return FileResponse(str(p), media_type="audio/wav")
 
 
+# ============================================================
+# 参考音频管理：把历史里满意的合成结果固化成参考音频
+# ============================================================
+class RefFromHistoryRequest(BaseModel):
+    time: str          # 历史目录名，如 20261020_000538
+
+
+@app.post("/api/ref/from-history")
+def ref_from_history(req: RefFromHistoryRequest):
+    """
+    把一条合成历史固化成参考音频。
+
+    做法：
+    - outputs/<time>/full.wav 复制成 data/ref/hist_<time>.wav（重复调用直接覆盖，幂等）
+    - 文本取该历史 meta.json 里的 text（跨语言合成时是目标语言的文本）
+    - 元信息写 ref_meta.json，并同步 ref_texts.json，保证 ref_prompt_text 能取到
+    """
+    t = (req.time or "").strip()
+    if not re.fullmatch(r"\d{8}_\d{6}", t):
+        raise HTTPException(status_code=400, detail="时间格式不对，应为 YYYYMMDD_HHMMSS")
+    job_dir = OUTPUT_DIR / t
+    if not job_dir.is_dir():
+        raise HTTPException(status_code=404, detail=f"找不到这条历史记录：{t}")
+    src = job_dir / "full.wav"
+    meta_file = job_dir / "meta.json"
+    if not src.exists() or not meta_file.exists():
+        raise HTTPException(status_code=400, detail="这条历史记录缺少音频或元信息，没法固化")
+    try:
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="历史元信息读不出来")
+
+    stem = f"hist_{t}"
+    dst = REF_DIR / f"{stem}.wav"
+    REF_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(str(src), str(dst))      # 覆盖式复制，幂等
+
+    # 时长（soundfile 读；读不到就 None）
+    # 引擎只接受 3~10 秒的参考音频（实测：2.91s 直接被引擎拒"参考音频在3~10秒范围外"）。
+    # 契约里 <1s/>15s 的提示偏宽，这里按引擎真实限制给 warning（超范围仍保存，但会提醒）。
+    duration = None
+    warning = ""
+    try:
+        import soundfile as sf
+        info = sf.info(str(dst))
+        duration = round(info.frames / info.samplerate, 2)
+        if duration < 1.0:
+            warning = "参考音频较短（不足 1 秒），效果可能变差"
+        elif duration > 15.0:
+            warning = "参考音频较长（超过 15 秒），效果可能变差"
+        if 1.0 <= duration < 3.0:
+            warning = f"参考音频 {duration} 秒，低于引擎要求的 3~10 秒范围，合成时会失败，建议换一条更长的历史"
+        elif duration > 10.0:
+            warning = f"参考音频 {duration} 秒，超过引擎要求的 3~10 秒范围，建议换一条更短的历史"
+    except Exception:
+        pass
+
+    text = (meta.get("text") or "").strip()
+    entry = {
+        "text": text,
+        "source": "history",
+        "created_at": meta.get("created_at") or datetime.now().isoformat(timespec="seconds"),
+        "model": meta.get("voice", ""),
+        "tone": meta.get("tone", ""),
+        "lang": meta.get("lang", ""),
+        "duration": duration,
+    }
+
+    ref_meta = _load_ref_meta()
+    ref_meta[stem] = entry
+    _save_ref_meta(ref_meta)
+
+    # 同步 ref_texts.json（ref_prompt_text 读它）
+    try:
+        texts_path = REF_DIR / "ref_texts.json"
+        texts = json.loads(texts_path.read_text(encoding="utf-8")) if texts_path.exists() else {}
+        texts[stem] = text
+        texts_path.write_text(json.dumps(texts, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "ref": {
+            "name": stem,
+            "text": text,
+            "duration": duration,
+            "lang": entry["lang"],
+            "model": entry["model"],
+            "tone": entry["tone"],
+        },
+        "warning": warning,
+    }
+
+
+@app.get("/api/refs")
+def list_refs():
+    """
+    可用的参考音频列表（含从历史固化的）。
+    扫描 data/ref 下第一层 wav（不递归，tones/aux 子目录不算），
+    合并 ref_meta.json 与 ref_texts.json，按 created_at 倒序（历史生成的排前面）。
+    """
+    meta_map = _load_ref_meta()
+    try:
+        texts_path = REF_DIR / "ref_texts.json"
+        texts_map = json.loads(texts_path.read_text(encoding="utf-8")) if texts_path.exists() else {}
+    except Exception:
+        texts_map = {}
+    refs = []
+    for f in sorted(REF_DIR.glob("*.wav")):
+        stem = f.stem
+        m = meta_map.get(stem, {})
+        refs.append({
+            "name": stem,
+            "text": m.get("text") or texts_map.get(stem, ""),
+            "source": m.get("source", "file"),
+            "created_at": m.get("created_at", ""),
+            "lang": m.get("lang", ""),
+            "model": m.get("model", ""),
+            "tone": m.get("tone", ""),
+            "duration": m.get("duration"),
+        })
+    refs.sort(key=lambda x: x["created_at"] or "", reverse=True)
+    default = default_ref_file()
+    return {"refs": refs, "default": default.stem if default else ""}
+
+
+class RefDeleteRequest(BaseModel):
+    name: str = ""
+
+
+@app.post("/api/refs/delete")
+def delete_ref(req: RefDeleteRequest):
+    """
+    删除一个参考音频（wav + ref_meta + ref_texts 条目一起清）。
+    只允许 data/ref 下的 .wav；当前默认参考不能删。
+    """
+    stem = _ref_stem_from_name(req.name)
+    if not stem:
+        raise HTTPException(status_code=400, detail="参考音频名字不合法")
+    p = REF_DIR / f"{stem}.wav"
+    if not p.exists() or not _inside_ref_dir(p):
+        raise HTTPException(status_code=404, detail=f"找不到这个参考音频：{stem}")
+    default = default_ref_file()
+    if default is not None and default.stem == stem:
+        raise HTTPException(status_code=400, detail="这是当前默认参考音频，不能删除（先换一个默认参考）")
+
+    p.unlink(missing_ok=True)
+    meta_map = _load_ref_meta()
+    meta_map.pop(stem, None)
+    _save_ref_meta(meta_map)
+    try:
+        texts_path = REF_DIR / "ref_texts.json"
+        if texts_path.exists():
+            texts = json.loads(texts_path.read_text(encoding="utf-8"))
+            texts.pop(stem, None)
+            texts_path.write_text(json.dumps(texts, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+    return {"ok": True, "deleted": stem}
+
+
 @app.post("/api/synthesize")
 def synthesize_text(req: SynthesizeRequest):
     """
@@ -650,18 +869,24 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
     else:
         tone_auto = False
 
-    # 参考音频：按语气自动挑一条，比固定一条更能带出情绪
-    ref_path = find_ref_file(req.voice, tone)
-    ref_text = ref_prompt_text(ref_path)
-    # 只有用户没指定具体参考音频文件时，才用语气参考音频
-    try:
-        specified_ref = bool(req.voice) and (REF_DIR / f"{Path(req.voice).name}.wav").exists()
-    except Exception:
-        specified_ref = False
-    if not specified_ref:
-        picked = tone_ref(tone)
-        if picked:
-            ref_path, ref_text = picked
+    # 参考音频：
+    # 1) 请求指定了 ref（历史固化的参考音频）→ 直接用，跳过语气库
+    # 2) 没指定 → 按语气自动挑一条（用户直接指定了参考文件名时除外）
+    ref_used_name = ""
+    if req.ref:
+        ref_path, ref_text, ref_used_name = _resolve_explicit_ref(req.ref)
+    else:
+        ref_path = find_ref_file(req.voice, tone)
+        ref_text = ref_prompt_text(ref_path)
+        # 只有用户没指定具体参考音频文件时，才用语气参考音频
+        try:
+            specified_ref = bool(req.voice) and (REF_DIR / f"{Path(req.voice).name}.wav").exists()
+        except Exception:
+            specified_ref = False
+        if not specified_ref:
+            picked = tone_ref(tone)
+            if picked:
+                ref_path, ref_text = picked
 
     # 切句
     sentences = split_sentences(text, lang)
@@ -725,6 +950,7 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
         "tone": tone,
         "tone_auto": tone_auto,
         "ref": Path(ref_path).name,
+        "ref_used": ref_used_name or Path(ref_path).name,   # 实际使用的参考音频文件名
         "segments": len(segments),
         "elapsed_ms": int((time.time() - started) * 1000),
         "est_seconds": estimate_seconds(text),
@@ -748,6 +974,7 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
         "seed_requested": req.seed,
         "lang": lang,                      # 新增：输出语言（前端直接读）
         "output_lang": lang,               # 兼容旧字段
+        "ref_used": meta["ref_used"],      # 新增：实际使用的参考音频文件名
         "created_at": meta["created_at"],
         "original_text": raw_text,
         "translated_text": text,

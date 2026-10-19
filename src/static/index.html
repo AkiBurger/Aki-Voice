@@ -311,6 +311,11 @@
                       改名
                     </button>
                   </div>
+                  <label class="field-label" for="refSelect">参考音频</label>
+                  <select id="refSelect" class="model-select" disabled>
+                    <option value="">自动（按语气挑选）</option>
+                  </select>
+                  <div class="field-hint" id="refHint">自动：按语气从素材里挑参考；指定：固定用这条参考。</div>
                   <audio id="previewAudio" class="model-audio" controls preload="none" hidden></audio>
                 </section>
 
@@ -372,6 +377,10 @@
                     <svg class="icon icon-sm" aria-hidden="true"><use href="#i-download"/></svg>
                     下载
                   </a>
+                  <button type="button" id="setRefBtn" class="btn-secondary" disabled title="把这次合成结果设为参考音频">
+                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-star"/></svg>
+                    设为参考
+                  </button>
                   <button type="button" id="savePresetBtn" class="btn-secondary">
                     <svg class="icon icon-sm" aria-hidden="true"><use href="#i-save"/></svg>
                     存成预设

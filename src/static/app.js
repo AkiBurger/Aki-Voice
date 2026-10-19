@@ -30,6 +30,7 @@
     inputLang: 'zh',          // 我输入的语言（默认中文：中文进、日文出）
     tone: 'auto',
     voices: [],
+    refs: [],                 // 参考音频列表（GET /api/refs）
     currentAudioUrl: null,
     engineUp: false,
     currentAudio: null,       // 当前正在播放的音频（全局只响一个）
@@ -52,6 +53,8 @@
     retryBtn: $('retryBtn'),
     previewBtn: $('previewBtn'),
     renameModelBtn: $('renameModelBtn'),
+    refSelect: $('refSelect'),
+    refHint: $('refHint'),
     langBtns: [...document.querySelectorAll('.lang-btn')],
     inLangBtns: [...document.querySelectorAll('.in-lang-btn')],
     langNote: $('langNote'),
@@ -72,6 +75,7 @@
     resultAudio: $('resultAudio'),
     resultMeta: $('resultMeta'),
     downloadLink: $('downloadLink'),
+    setRefBtn: $('setRefBtn'),
     retrySynthBtn: $('retrySynthBtn'),
     errorBox: $('errorBox'),
     errorTitle: $('errorTitle'),
@@ -218,6 +222,7 @@
       loadEvalTarget();
       loadEvalHistory();
     }
+    if (name === 'synth') { loadRefs(); }
     try { document.title = title + ' · AkiBurger Voice'; } catch (e) { /* 忽略 */ }
     // 内容区滚动复位（新布局里滚动容器是 #contentScroll，不再是 window）
     const scrollBox = document.getElementById('contentScroll');
@@ -250,7 +255,9 @@
           }
         }
       } catch (e) { /* 非 JSON 响应 */ }
-      throw new Error(msg);
+      const err = new Error(msg);
+      err.status = res.status;   // 调用方可以按状态码给出不同提示
+      throw err;
     }
     return res.json();
   }
@@ -398,6 +405,124 @@
     }
   }
 
+  // ---------- 参考音频（自动 / 指定某条历史结果） ----------
+  const REF_KEY = 'abv:ref';
+
+  function savedRef() {
+    try { return localStorage.getItem(REF_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  function saveRefChoice() {
+    try { localStorage.setItem(REF_KEY, currentRef()); } catch (e) { /* 记不住不影响使用 */ }
+  }
+
+  function currentRef() {
+    return (els.refSelect && els.refSelect.value) || '';
+  }
+
+  // 文件名去掉 .wav，界面里更干净
+  function refLabel(name) {
+    return String(name || '').replace(/\.wav$/i, '');
+  }
+
+  // 结果音频地址 -> 历史时间戳（/static/output/<time>/full.wav）
+  function historyTimeFromUrl(url) {
+    if (!url) return '';
+    const m = String(url).match(/\/output\/(\d{8}_\d{6})\//);
+    return m ? m[1] : '';
+  }
+
+  function updateRefHint() {
+    if (!els.refHint) return;
+    const base = '自动：按语气从素材里挑参考；指定：固定用这条参考。';
+    els.refHint.textContent = currentRef()
+      ? base + ' 当前已指定参考，语气不再自动切换参考音频。'
+      : base;
+  }
+
+  function renderRefOptions(list, selected) {
+    const sel = els.refSelect;
+    if (!sel) return;
+    sel.innerHTML = '';
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = '自动（按语气挑选）';
+    sel.appendChild(auto);
+    for (const r of list) {
+      if (!r || !r.name) continue;
+      const opt = document.createElement('option');
+      opt.value = r.name;
+      const bits = [];
+      if (r.tone) bits.push(r.tone);
+      if (r.duration != null && isFinite(Number(r.duration))) {
+        bits.push(Number(r.duration).toFixed(1) + 's');
+      }
+      opt.textContent = refLabel(r.name) + (bits.length ? '（' + bits.join(' · ') + '）' : '');
+      if (r.text) opt.title = r.text;
+      opt.dataset.source = r.source || '';
+      sel.appendChild(opt);
+    }
+    // 恢复上次选择；已不存在的参考回落到「自动」
+    const want = selected || savedRef() || '';
+    const exists = Array.prototype.some.call(sel.options, (o) => o.value === want);
+    sel.value = exists ? want : '';
+    sel.disabled = false;
+    saveRefChoice();
+    updateRefHint();
+  }
+
+  // prefer：刷新后希望选中的参考（比如刚保存的那条）
+  async function loadRefs(prefer) {
+    if (!els.refSelect) return;
+    const keep = prefer || currentRef() || savedRef() || '';
+    try {
+      const resp = await api('/api/refs');
+      const list = resp && Array.isArray(resp.refs) ? resp.refs : [];
+      state.refs = list;
+      renderRefOptions(list, keep);
+    } catch (e) {
+      // 接口还没就绪或网络抖动：静默降级成只有「自动」，不影响合成
+      if (!state.refs || state.refs.length === 0) {
+        renderRefOptions([], '');
+      } else {
+        renderRefOptions(state.refs, keep);
+      }
+    }
+  }
+
+  // 把历史里的某条合成结果固化成参考音频
+  async function setRefFromHistory(time, confirmText) {
+    if (!time) {
+      showError('还不能设为参考', '这条记录没有对应的音频文件。');
+      return false;
+    }
+    let ok = true;
+    try { ok = window.confirm(confirmText || '把这条合成语音设为参考音频？'); } catch (e) { ok = true; }
+    if (!ok) return false;
+    try {
+      const res = await api('/api/ref/from-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ time }),
+      });
+      if (!res || !res.ok || !res.ref) throw new Error((res && res.message) || '没有返回参考信息');
+      const name = (res.ref && res.ref.name) || '';
+      await loadRefs(name);
+      const msg = name ? '已设为参考音频「' + refLabel(name) + '」' : '已设为参考音频';
+      showToast(res.warning ? msg + '；' + res.warning : msg);
+      return true;
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      if (/not found/i.test(msg) && !/[\u4e00-\u9fa5]/.test(msg)) {
+        // 后端接口还没上线
+        showToast('暂时还不能设为参考，等这个功能就绪后再试。');
+      } else {
+        showError('设为参考失败', msg);
+      }
+      return false;
+    }
+  }
+
   // ---------- 语言 ----------
   function setLang(lang) {
     state.lang = lang;
@@ -521,7 +646,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text, lang: state.lang, input_lang: state.inputLang, voice, tone: state.tone,
-          seed: state.seed, temperature: state.temperature,
+          seed: state.seed, temperature: state.temperature, ref: currentRef(),
         }),
       });
       const elapsed = Math.round(performance.now() - t0);
@@ -551,13 +676,15 @@
       // 下载文件名带时间戳，避免每次都叫 full.wav
       els.downloadLink.download = 'voice_' + downloadStamp(new Date()) + '.wav';
       els.resultSection.classList.remove('hidden');
+      if (els.setRefBtn) els.setRefBtn.disabled = false;
 
       const segs = Array.isArray(res.segments) ? res.segments.length : 0;
       els.resultMeta.textContent =
         (res.lang ? res.lang.toUpperCase() + ' · ' : '') +
         (res.tone ? res.tone + ' · ' : '') +
         (segs > 1 ? '文本分 ' + segs + ' 段 · ' : '') +
-        '耗时 ' + (res.elapsed_ms != null ? (res.elapsed_ms / 1000).toFixed(1) : (elapsed / 1000).toFixed(1)) + ' 秒';
+        '耗时 ' + (res.elapsed_ms != null ? (res.elapsed_ms / 1000).toFixed(1) : (elapsed / 1000).toFixed(1)) + ' 秒' +
+        (res.ref_used ? ' · 参考 ' + refLabel(res.ref_used) : '');
 
       loadHistory(); // 刷新历史
       // 新结果自动播放前，先停掉其它正在响的（历史/批量/试听），避免同时出声
@@ -1605,7 +1732,11 @@
     const toneTag = document.createElement('span');
     toneTag.className = 'history-tag';
     toneTag.textContent = p.tone || '自动';
-    meta.append(voiceTag, langTag, toneTag);
+    const refTag = document.createElement('span');
+    refTag.className = 'history-tag';
+    refTag.textContent = p.ref ? '参考：' + refLabel(p.ref) : '参考：自动';
+    if (p.ref) refTag.title = refLabel(p.ref);
+    meta.append(voiceTag, langTag, toneTag, refTag);
 
     const actions = document.createElement('div');
     actions.className = 'preset-actions';
@@ -1634,7 +1765,7 @@
     return row;
   }
 
-  function applyPreset(p) {
+  async function applyPreset(p) {
     // 音色仍存在才设置
     if (findVoice(p.voice)) {
       els.voiceSelect.value = p.voice;
@@ -1645,6 +1776,20 @@
     // 音质微调也要一起恢复，否则预设里的声音参数对不上
     if (p.temperature != null) setTemperature(p.temperature);
     if (p.seed != null) setSeed(p.seed);
+    // 参考音频：列表可能还没加载，先刷一次再判断；原参考被删了就回落到「自动」
+    if (els.refSelect) {
+      if (p.ref && els.refSelect.options.length <= 1) await loadRefs();
+      const want = p.ref || '';
+      const exists = !!want && Array.prototype.some.call(els.refSelect.options, (o) => o.value === want);
+      els.refSelect.value = exists ? want : '';
+      saveRefChoice();
+      updateRefHint();
+      els.textInput.focus();
+      if (want && !exists) {
+        showToast('已套用预设；原来的参考音频已不存在，已改用「自动」');
+        return;
+      }
+    }
     els.textInput.focus();
     showToast('已套用预设「' + (p.name || '') + '」');
   }
@@ -1661,6 +1806,7 @@
     const preset = {
       name,
       voice: els.voiceSelect.value || '',
+      ref: currentRef(),
       lang: state.lang,
       inputLang: state.inputLang,
       tone: state.tone,
@@ -1783,7 +1929,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: batchAbort.signal,
-          body: JSON.stringify({ text: item.text, lang: state.lang, input_lang: state.inputLang, voice, tone: item.tone, seed: state.seed, temperature: state.temperature }),
+          body: JSON.stringify({ text: item.text, lang: state.lang, input_lang: state.inputLang, voice, tone: item.tone, seed: state.seed, temperature: state.temperature, ref: currentRef() }),
         });
         if (res && res.ok && res.audio_url) {
           setIcon(status, 'check');
@@ -1866,6 +2012,19 @@
     // 点下载图标只下载，不要触发整行播放
     dl.addEventListener('click', (e) => e.stopPropagation());
 
+    // 设为参考音频（右键边上的图标按钮）
+    const refBtn = document.createElement('button');
+    refBtn.type = 'button';
+    refBtn.className = 'history-ref';
+    setIcon(refBtn, 'star');
+    refBtn.title = '设为参考音频';
+    refBtn.setAttribute('aria-label', '设为参考音频');
+    refBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setRefFromHistory(item.time,
+        '把这条合成语音设为参考音频？\n保存后可以在「模型 → 参考音频」里指定，也可以随预设一起保存。');
+    });
+
     // 删除这一条
     const del = document.createElement('button');
     del.type = 'button';
@@ -1899,7 +2058,7 @@
       }
     });
 
-    row.append(play, body, dl, del);
+    row.append(play, body, refBtn, dl, del);
 
     const url = item.audio_url;
     row.addEventListener('click', (e) => {
@@ -2101,6 +2260,7 @@
       try { resultAudio.load(); } catch (e) { /* 忽略 */ }
     }
     if (resultSection) resultSection.classList.add('hidden');
+    if (els.setRefBtn) els.setRefBtn.disabled = true;
     if (translatedBox) translatedBox.textContent = '';
     if (resultMeta) resultMeta.textContent = '';
     if (downloadLink) downloadLink.removeAttribute('href');
@@ -2152,6 +2312,27 @@
       updateModelBadges();
     }
   });
+
+  // 参考音频选择：记住选择并更新提示
+  if (els.refSelect) {
+    els.refSelect.addEventListener('change', () => {
+      saveRefChoice();
+      updateRefHint();
+    });
+  }
+
+  // 结果区「设为参考」：从当前结果音频地址里取历史时间戳
+  if (els.setRefBtn) {
+    els.setRefBtn.addEventListener('click', () => {
+      const time = historyTimeFromUrl(state.currentAudioUrl);
+      if (!time) {
+        showError('还不能设为参考', '先合成一条结果，再把它设为参考。');
+        return;
+      }
+      setRefFromHistory(time,
+        '把这次合成结果设为参考音频？\n保存后可以在「模型 → 参考音频」里指定，也可以随预设一起保存。');
+    });
+  }
 
   // 快捷键：Ctrl+Enter 合成；空格 播放/暂停结果（焦点不在输入框时）
   document.addEventListener('keydown', (e) => {
