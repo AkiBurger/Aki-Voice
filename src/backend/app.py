@@ -287,6 +287,26 @@ def find_ref_file(voice: str, tone: str = "") -> str:
     raise HTTPException(status_code=404, detail="找不到参考音频，请把 wav 放进 data/ref/")
 
 
+TONES_DIR = REF_DIR / "tones"
+_tone_map_cache = None
+
+
+def tone_ref(tone: str):
+    """按语气取参考音频：返回 (路径, 参考文本)；没有配置就返回 None。"""
+    global _tone_map_cache
+    if _tone_map_cache is None:
+        try:
+            f = TONES_DIR / "tones.json"
+            _tone_map_cache = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+        except Exception:
+            _tone_map_cache = {}
+    for item in _tone_map_cache.get(tone, []):
+        path = TONES_DIR / item.get("file", "")
+        if path.exists() and _inside_ref_dir(path):
+            return str(path), item.get("text", "")
+    return None
+
+
 def ref_prompt_text(voice: str) -> str:
     """参考音频对应的文本。有的话传给引擎 —— 训练后的模型带上参考文本合成更稳。"""
     try:
@@ -503,9 +523,18 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
     else:
         tone_auto = False
 
-    # 参考音频（v1：语气先只影响返回字段，参考音频还是选 voice 本身；
-    # 后续有按语气挑片段的库再升级 find_ref_file 逻辑）
+    # 参考音频：按语气自动挑一条，比固定一条更能带出情绪
     ref_path = find_ref_file(req.voice, tone)
+    ref_text = ref_prompt_text(ref_path)
+    # 只有用户没指定具体参考音频文件时，才用语气参考音频
+    try:
+        specified_ref = bool(req.voice) and (REF_DIR / f"{Path(req.voice).name}.wav").exists()
+    except Exception:
+        specified_ref = False
+    if not specified_ref:
+        picked = tone_ref(tone)
+        if picked:
+            ref_path, ref_text = picked
 
     # 切句
     sentences = split_sentences(text, lang)
@@ -533,7 +562,7 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
             text_lang=lang,
             ref_audio_path=ref_path,
             prompt_lang="ja",      # 参考音频/参考文本始终是日语
-            prompt_text=ref_prompt_text(ref_path),
+            prompt_text=ref_text,
             speed_factor=req.speed,
             seed=req.seed,
             temperature=req.temperature,
@@ -569,6 +598,7 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
         "voice": req.voice,
         "tone": tone,
         "tone_auto": tone_auto,
+        "ref": Path(ref_path).name,
         "segments": len(segments),
         "elapsed_ms": int((time.time() - started) * 1000),
         "est_seconds": estimate_seconds(text),
