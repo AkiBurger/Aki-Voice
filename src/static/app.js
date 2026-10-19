@@ -538,8 +538,9 @@
       }
 
       // 随机模式下，把这次实际用的种子显示出来，方便复现
-      if (els.seedInput && res.seed !== undefined && res.seed !== -1) {
-        els.seedInput.value = res.seed;
+      const seedUsed = res.seed_used !== undefined ? res.seed_used : res.seed;
+      if (els.seedInput && seedUsed !== undefined && seedUsed !== -1) {
+        els.seedInput.value = seedUsed;
       }
 
       state.currentAudioUrl = res.audio_url;

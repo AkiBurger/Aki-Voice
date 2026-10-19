@@ -342,10 +342,6 @@ def delete_materials(name: str = "", delete_all: bool = False) -> dict:
 
     targets = wavs if delete_all else [_safe_target(name)]
 
-    # 单条删除会改动标注清单，先把清单备份下来再动文件
-    if not delete_all:
-        _backup_lists()
-
     removed = 0
     for w in targets:
         if not w.exists():
@@ -360,13 +356,11 @@ def delete_materials(name: str = "", delete_all: bool = False) -> dict:
     if removed == 0 and not delete_all:
         raise FileNotFoundError(f"找不到文件：{name}")
 
-    # 全部清空是可恢复操作：标注保持原样，恢复素材后能重新对上；
-    # 只删单条时把对应行从清单里去掉
-    if removed and not delete_all:
-        try:
-            _prune_lists([WAV_DIR / Path(name).name])
-        except Exception:
-            pass
+    # 注意：删除是"可恢复"操作（文件进了 _trash），所以不动标注清单。
+    # 以前单条删除会调 _prune_lists 把对应行裁掉 —— 恢复素材后文本对不上。
+    # 现在标注保持原样：恢复后文本依然能对上；清单里的"已删行"由
+    # current_dataset() 按"音频是否存在"过滤，不会算进统计。
+    # _prune_lists 保留给 ASR/导入的全量清理用，这里不再调用。
 
     return {
         "ok": True,
@@ -469,6 +463,7 @@ def restore_materials(batch: str = "") -> dict:
     if skipped:
         msg += f"，{skipped} 段因同名已存在被跳过"
     return {"ok": True, "restored": restored, "skipped": skipped, "message": msg,
+            "skipped_reason": "同名文件已存在，未覆盖（保留现有点）" if skipped else "",
             "remain": len(list(WAV_DIR.glob("*.wav")))}
 
 def _read_list(path):

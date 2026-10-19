@@ -212,7 +212,20 @@ def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: i
 
     from_scratch: True = 从预训练底模开始（默认，旧产物会被备份）；
                   False = 续训（ABV_FROM_SCRATCH=0，保留旧 checkpoint）。
+
+    并发保护：_start_lock 包住"检查是否已在跑 + 启动"整段，
+    连点两次/两个请求同时来，只有一个能真正启动。
     """
+    with _start_lock:
+        return _start_inner(epochs_s2, epochs_s1, batch_s2, batch_s1,
+                            save_every_s2, save_every_s1, lr_s2, lr_s1,
+                            auto_eval, from_scratch)
+
+
+def _start_inner(epochs_s2, epochs_s1, batch_s2, batch_s1,
+                 save_every_s2, save_every_s1, lr_s2, lr_s1,
+                 auto_eval, from_scratch) -> dict:
+    """start() 的实际实现（调用方必须持有 _start_lock）。"""
     if is_running():
         return {"ok": False, "message": "已经有训练在跑了"}
 
@@ -221,6 +234,16 @@ def start(epochs_s2: int = 6, epochs_s1: int = 8, batch_s2: int = 2, batch_s1: i
     clean_list = PROJECT_ROOT / "data" / "setsuna" / "setsuna_clean.list"
     if not clean_list.exists():
         return {"ok": False, "message": "还没有清洗后的训练数据，先做数据准备"}
+    # 保护：清洗列表为空 / wav 目录为空都不许开训（以前空列表也能启动，白跑一轮）
+    wav_dir = PROJECT_ROOT / "data" / "setsuna" / "wav"
+    if not wav_dir.exists() or not any(wav_dir.glob("*.wav")):
+        return {"ok": False, "message": "还没有可训练的素材（wav 目录是空的），先导入音频"}
+    try:
+        lines = [l for l in clean_list.read_text(encoding="utf-8").splitlines() if l.strip()]
+    except OSError:
+        return {"ok": False, "message": "清洗列表读不出来，先重新做识别清洗"}
+    if not lines:
+        return {"ok": False, "message": "还没有可训练的素材（清洗列表是空的），先做识别清洗"}
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")

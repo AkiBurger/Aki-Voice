@@ -4,19 +4,19 @@ AkiBurger Voice 后端服务。
 
 职责：
 - 给前端提供 /api/* 接口
-- 代理 GPT-SoVITS 引擎（9880）
-- 长文本切句 -> 逐句合成 -> 拼接 -> 存盘
+- 代理 GPT-SoVITS 引擎（默认 127.0.0.1:9880）
+- 长文本交给引擎按句切分合成，产出 wav 和历史记录
 - 静态托管：前端页面 + 合成产物
 
 启动：
-    cd D:\Dev\projects\voice-studio
-    D:\Dev\ai\02_GPT-SoVITS_配音\.venv\Scripts\python.exe src\backend\app.py
+    python src/backend/app.py
 
 监听 127.0.0.1:8017
 """
 import io
 import json
 import os
+import random
 import re
 import threading
 import shutil
@@ -30,7 +30,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from engine import EngineError, is_engine_up, set_models, synthesize
 from emotion import judge_tone, TONES
@@ -130,11 +130,12 @@ class SynthesizeRequest(BaseModel):
     input_lang: str = ""                # 输入文本的语言；留空=与输出语言相同
     voice: str = ""                     # 模型 id（如 e2）；留空=默认
     tone: str = "自动"                  # 平静|开心|悲伤|生气|惊讶|害怕|自动
-    speed: float = 1.0
-    seed: int = -1                      # -1 随机；指定数字则结果可复现
-    temperature: float = 0.8            # 越低越稳（默认 0.8，比 1.0 稳）
-    top_k: int = 10                     # 采样范围，越小越稳
-    repetition_penalty: float = 1.2     # 防念重复/卡壳
+    # 参数范围限制（防止非法值把引擎/显存搞挂，也让 422 报错即时返回）：
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)             # 语速
+    seed: int = Field(default=-1, ge=-1)                          # -1 随机；指定数字可复现
+    temperature: float = Field(default=0.8, ge=0.1, le=2.0)       # 越低越稳
+    top_k: int = Field(default=10, ge=1, le=100)                  # 采样范围，越小越稳
+    repetition_penalty: float = Field(default=1.2, ge=0.5, le=2.0)  # 防念重复/卡壳
     use_aux_ref: bool = False           # 多参考融合实测会拉偏音色，默认关
 
 
@@ -307,6 +308,76 @@ def tone_ref(tone: str):
     return None
 
 
+_tone_build_lock = threading.Lock()
+_tone_build_done = False
+
+
+def build_tones_if_missing() -> bool:
+    """
+    语气库没有生成过时，从清洗列表里自动挑一次参考音频。
+
+    做法：按 judge_tone 把 setsuna_clean.list 里的句子分到 6 种语气，
+    每种语气挑最典型的 2 段，把 wav 复制进 data/ref/tones/<语气>/，
+    写入 tones.json。之后合成选语气时就能自动挑到对应参考音频，
+    不会静默回退到默认参考。
+
+    只跑一次（_tone_build_done 防重入）；失败也不阻断合成。
+    """
+    global _tone_build_done
+    if _tone_build_done or (TONES_DIR / "tones.json").exists():
+        return True
+    with _tone_build_lock:
+        if _tone_build_done or (TONES_DIR / "tones.json").exists():
+            return True
+        clean = DATA_DIR / "setsuna" / "setsuna_clean.list"
+        if not clean.exists():
+            _tone_build_done = True       # 没数据，不反复试
+            return False
+        picked = {t: [] for t in TONES}
+        try:
+            for line in clean.read_text(encoding="utf-8").splitlines():
+                parts = line.split("|")
+                if len(parts) != 4:
+                    continue
+                wav_path, _spk, _lang, text = parts
+                p = Path(wav_path)
+                if not p.exists() or not text.strip():
+                    continue
+                tone = judge_tone(text, "ja")["tone"]
+                if tone not in picked or len(picked[tone]) >= 2:
+                    continue
+                picked[tone].append((p, text.strip()))
+        except Exception:
+            _tone_build_done = True
+            return False
+        if not any(picked.values()):
+            _tone_build_done = True
+            return False
+        try:
+            TONES_DIR.mkdir(parents=True, exist_ok=True)
+            mapping = {}
+            for tone, items in picked.items():
+                if not items:
+                    continue
+                tone_dir = TONES_DIR / tone
+                tone_dir.mkdir(parents=True, exist_ok=True)
+                entries = []
+                for i, (src, text) in enumerate(items, 1):
+                    dst = tone_dir / f"sample{i}.wav"
+                    if not dst.exists():
+                        shutil.copy2(str(src), str(dst))
+                    entries.append({"file": f"{tone}/sample{i}.wav", "text": text})
+                mapping[tone] = entries
+            (TONES_DIR / "tones.json").write_text(
+                json.dumps(mapping, ensure_ascii=False, indent=2), encoding="utf-8")
+            global _tone_map_cache
+            _tone_map_cache = mapping
+        except Exception:
+            pass
+        _tone_build_done = True
+        return bool(_tone_map_cache)
+
+
 def ref_prompt_text(voice: str) -> str:
     """参考音频对应的文本。有的话传给引擎 —— 训练后的模型带上参考文本合成更稳。"""
     try:
@@ -317,6 +388,31 @@ def ref_prompt_text(voice: str) -> str:
     except Exception:
         pass
     return ""
+
+
+def _guess_prompt_lang(text: str) -> str:
+    """
+    猜参考音频/参考文本的语言，给 prompt_lang 用。
+
+    启发式（够用即可）：
+    - 含假名 → ja
+    - 含汉字 → zh
+    - 纯 ASCII → en
+    - 拿不准（空文本等）→ ja（当前语气库/参考库全是日文，这是安全的默认）
+
+    以前这里硬编码 "ja"：只要参考音频全是日文就没问题，
+    但将来混入中文/英文参考音频就会把 prompt_lang 传错。加这个启发式防患。
+    """
+    t = (text or "").strip()
+    if not t:
+        return "ja"
+    if re.search(r"[\u3040-\u30ff]", t):        # 平假名/片假名
+        return "ja"
+    if re.search(r"[\u4e00-\u9fff]", t):        # 汉字
+        return "zh"
+    if re.fullmatch(r"[\x20-\x7e]+", t):        # 纯 ASCII
+        return "en"
+    return "ja"
 
 
 def aux_refs() -> list:
@@ -384,6 +480,28 @@ def judge_tone_api(req: ToneRequest):
         return judge_tone(req.text or "", req.lang if req.lang in ("ja", "zh", "en") else "ja")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)[:100])
+
+
+@app.post("/api/tones/build")
+def tones_build():
+    """
+    手动重建语气库：从清洗列表里按语气挑参考音频，写进 data/ref/tones/。
+    平时合成前会自动调用（缺才建），这个接口给想手动刷新的人用。
+    """
+    # 强制重建：清掉缓存，重新加载现有 tones.json（没有才从清洗列表生成）
+    global _tone_map_cache, _tone_build_done
+    _tone_map_cache = None
+    _tone_build_done = False
+    ok = build_tones_if_missing()
+    if not ok and not (TONES_DIR / "tones.json").exists():
+        raise HTTPException(status_code=400, detail="没有可用的清洗数据，生成不了语气库（先导入并完成识别清洗）")
+    # 语气库已存在时 build 提前返回，这里把缓存补加载上
+    if _tone_map_cache is None:
+        try:
+            _tone_map_cache = json.loads((TONES_DIR / "tones.json").read_text(encoding="utf-8"))
+        except Exception:
+            _tone_map_cache = {}
+    return {"ok": True, "tones": sorted((_tone_map_cache or {}).keys())}
 
 
 @app.get("/api/models")
@@ -497,8 +615,17 @@ def synthesize_text(req: SynthesizeRequest):
 
 
 def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
+    started = time.time()
     lang = req.lang if req.lang in ("ja", "zh", "en") else "ja"
     input_lang = req.input_lang if req.input_lang in ("ja", "zh", "en") else lang
+
+    # 界面选的是哪个模型，就把引擎权重切过去（有 _attached 缓存，重复切换无副作用）
+    switch_model_if_needed(req.voice)
+    # 语气库不存在就自动生成一次（新用户第一次合成不再静默回退默认参考）
+    build_tones_if_missing()
+
+    # seed 处理：-1（随机）时生成一个实际种子并回显，让用户能复现这次结果
+    used_seed = req.seed if req.seed >= 0 else random.randint(0, 999999)
 
     # ---------- 翻译（输入语言 ≠ 输出语言时）----------
     translated_text = raw_text
@@ -545,7 +672,6 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
     job_dir = OUTPUT_DIR / stamp
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    started = time.time()
     segments = []
     wavs = []
 
@@ -561,10 +687,10 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
             text=text,
             text_lang=lang,
             ref_audio_path=ref_path,
-            prompt_lang="ja",      # 参考音频/参考文本始终是日语
+            prompt_lang=_guess_prompt_lang(ref_text),   # 按参考文本猜语言，不再硬编码 ja
             prompt_text=ref_text,
             speed_factor=req.speed,
-            seed=req.seed,
+            seed=used_seed,
             temperature=req.temperature,
             top_k=req.top_k,
             repetition_penalty=req.repetition_penalty,
@@ -602,7 +728,8 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
         "segments": len(segments),
         "elapsed_ms": int((time.time() - started) * 1000),
         "est_seconds": estimate_seconds(text),
-        "seed": req.seed,
+        "seed": used_seed,                 # 实际使用的种子（-1 已被替换成真种子）
+        "seed_requested": req.seed,
         "temperature": req.temperature,
         "top_k": req.top_k,
         "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -616,14 +743,17 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
         "tone": tone,
         "tone_auto": tone_auto,
         "elapsed_ms": meta["elapsed_ms"],
-        "seed": req.seed,
+        "seed": used_seed,                 # 向后兼容（合成时传的是实际种子）
+        "seed_used": used_seed,            # 新增：实际使用的种子，可复现
+        "seed_requested": req.seed,
+        "lang": lang,                      # 新增：输出语言（前端直接读）
+        "output_lang": lang,               # 兼容旧字段
         "created_at": meta["created_at"],
         "original_text": raw_text,
         "translated_text": text,
         "translated": translated,
         "translated_by": translate_engine,   # qwen / builtin / none
         "input_lang": input_lang,
-        "output_lang": lang,
     }
 
 
@@ -913,6 +1043,10 @@ def train_start(req: TrainStartRequest):
     # 素材导入/识别还在跑时不允许开训，否则会读到半截数据
     if data_prep.is_busy():
         raise HTTPException(status_code=400, detail="素材导入/识别还在跑，等它结束再开始训练")
+    # 没有可训练素材时直接拒绝（以前 clean.list 为空也能点开始，白跑一轮）
+    ds = data_prep.current_dataset()
+    if ds["clean_count"] == 0 or ds["wav_count"] == 0:
+        raise HTTPException(status_code=400, detail="还没有可训练的素材：先导入音频并完成识别清洗，再来训练")
     e2 = max(1, min(20, int(req.epochs_s2)))
     e1 = max(1, min(30, int(req.epochs_s1)))
     b2 = max(1, min(8, int(req.batch_s2)))
@@ -945,44 +1079,16 @@ def train_stop():
 EVAL_DIR = OUTPUT_DIR / "_eval"              # 评测产物放这里（不影响合成历史）
 EVAL_HISTORY = DATA_DIR / "evaluations.json"  # 评测历史记录
 
-# 固定的测试句（跨语言用）
-CROSS_LANG_TESTS = {
-    "zh": [
-        "你好，今天过得怎么样？",
-        "我一直在这里等你回来。",
-        "这种事情，我绝对不会原谅。",
-    ],
-    "en": [
-        "Good morning. How are you today?",
-        "I have been waiting for you all this time.",
-        "I will never forgive you for this.",
-    ],
+# 评测进度（前端轮询 /api/eval/status 时读）
+_eval_state = {
+    "running": False,
+    "stage": "",          # 准备参考声纹 | 合成与打分 | 完成 | 失败
+    "current": 0,
+    "total": 0,
+    "started_at": None,
+    "finished_at": None,
+    "last_error": "",
 }
-
-
-def _sample_ja_tests(n: int = 5) -> list:
-    """从训练数据里挑测试句（本人语言）。挑长度适中的，避免太短。"""
-    clean_list = DATA_DIR / "setsuna" / "setsuna_clean.list"
-    texts = []
-    try:
-        for line in clean_list.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            parts = line.split("|")
-            if len(parts) != 4:
-                continue
-            t = parts[3].strip()
-            if 8 <= len(t) <= 30:
-                texts.append(t)
-    except Exception:
-        pass
-    if not texts:
-        # 兜底：固定句子
-        texts = ["おはよう。今日もいい天気だね。", "ずっと、あなたのことが好きだったの。"]
-    # 均匀抽样，保证稳定（同一批测试句方便多次对比）
-    step = max(1, len(texts) // n)
-    picked = texts[::step][:n]
-    return picked
 
 
 def _load_eval_history() -> list:
@@ -1004,12 +1110,13 @@ def _save_eval_history(items: list) -> None:
 
 def _eval_one_sentence(text: str, lang: str, ref_path: str) -> dict:
     """合成一句并打分。"""
+    ref_text = ref_prompt_text(ref_path)
     wav_bytes = synthesize(
         text=text,
         text_lang=lang,
         ref_audio_path=ref_path,
-        prompt_lang="ja",
-        prompt_text=ref_prompt_text(ref_path),
+        prompt_lang=_guess_prompt_lang(ref_text),
+        prompt_text=ref_text,
         speed_factor=1.0,
         temperature=0.8,
         top_k=10,
@@ -1020,10 +1127,15 @@ def _eval_one_sentence(text: str, lang: str, ref_path: str) -> dict:
 
 @app.get("/api/evaluate/tests")
 def evaluate_tests():
-    """当前使用的测试句（前端展示用）。"""
+    """当前使用的测试句（固定句，与训练数据无关 —— 避免评测分数虚高）。"""
+    fixed = evaluator.FIXED_TEST_SENTENCES
     return {
-        "ja": _sample_ja_tests(5),
-        "cross": CROSS_LANG_TESTS,
+        "ja": fixed["ja"],
+        "zh": fixed["zh"],
+        "en": fixed["en"],
+        "cross": {"zh": fixed["zh"], "en": fixed["en"]},   # 兼容旧前端字段
+        "fixed": True,
+        "note": "固定评测句，不从训练数据取句（避免数据泄漏）",
     }
 
 
@@ -1045,6 +1157,17 @@ def run_evaluate():
 
 
 def _do_evaluate():
+    # 评测要合成 11 句，跟普通合成共用 _synth_lock 互斥：
+    # 避免评测和用户合成同时抢显存（也会让两者的耗时都爆炸）
+    if not _synth_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="正在合成其它音频，等它完成后再评测")
+    try:
+        return _do_evaluate_impl()
+    finally:
+        _synth_lock.release()
+
+
+def _do_evaluate_impl():
     ref = default_ref_file()
     if ref is None:
         raise HTTPException(status_code=400, detail="没有参考音频，没法打分")
@@ -1052,48 +1175,67 @@ def _do_evaluate():
 
     ms = list_models()
     model_name = ms[0]["name"] if ms else "默认"
+    # 用当前选中的第一个模型评测（评测的就是"现在引擎挂着的模型"）
+    if ms:
+        switch_model_if_needed(ms[0]["id"])
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     job_dir = EVAL_DIR / stamp
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    # 测试句：本人语言（日文）用训练数据里的句子；另外测中文、英文（跨语言）
-    test_sets = {"ja": _sample_ja_tests(5)}
-    test_sets.update(CROSS_LANG_TESTS)
+    # 测试句：固定句（5 日文 + 3 中文 + 3 英文），不从训练集取样（避免数据泄漏）
+    test_sets = {lang: list(sents) for lang, sents in evaluator.FIXED_TEST_SENTENCES.items()}
+
+    _eval_state.update({
+        "running": True, "stage": "准备参考声纹", "current": 0,
+        "total": sum(len(v) for v in test_sets.values()),
+        "started_at": datetime.now().isoformat(timespec="seconds"),
+        "finished_at": None, "last_error": "",
+    })
 
     try:
         ref_emb = evaluator.embedding(ref)
     except Exception as e:
+        _eval_state.update({"running": False, "stage": "失败", "last_error": str(e),
+                            "finished_at": datetime.now().isoformat(timespec="seconds")})
         raise HTTPException(status_code=500, detail=f"参考音频打不开：{e}")
 
     details = []
     scores_by_lang = {}
     idx = 0
-    for lang, texts in test_sets.items():
-        for t in texts:
-            idx += 1
-            try:
-                wav_bytes = _eval_one_sentence(t, lang, ref)
-            except EngineError as e:
-                raise HTTPException(status_code=503, detail=str(e))
-            wav_path = job_dir / f"{idx:02d}_{lang}.wav"
-            wav_path.write_bytes(wav_bytes)
-            try:
-                emb = evaluator.embedding(str(wav_path))
-                score = evaluator.cosine(ref_emb, emb)
-            except Exception:
-                score = None
-            item = {
-                "index": idx,
-                "lang": lang,
-                "text": t,
-                "score": round(score, 4) if score is not None else None,
-                "level": evaluator.level_of(score) if score is not None else "无法评分",
-                "audio_url": f"/static/output/_eval/{stamp}/{wav_path.name}",
-            }
-            details.append(item)
-            if score is not None:
-                scores_by_lang.setdefault(lang, []).append(score)
+    _eval_state["stage"] = "合成与打分"
+    try:
+        for lang, texts in test_sets.items():
+            for t in texts:
+                idx += 1
+                _eval_state["current"] = idx
+                try:
+                    wav_bytes = _eval_one_sentence(t, lang, ref)
+                except EngineError as e:
+                    _eval_state.update({"running": False, "stage": "失败", "last_error": str(e),
+                                        "finished_at": datetime.now().isoformat(timespec="seconds")})
+                    raise HTTPException(status_code=503, detail=str(e))
+                wav_path = job_dir / f"{idx:02d}_{lang}.wav"
+                wav_path.write_bytes(wav_bytes)
+                try:
+                    emb = evaluator.embedding(str(wav_path))
+                    score = evaluator.cosine(ref_emb, emb)
+                except Exception:
+                    score = None
+                item = {
+                    "index": idx,
+                    "lang": lang,
+                    "text": t,
+                    "score": round(score, 4) if score is not None else None,
+                    "level": evaluator.level_of(score) if score is not None else "无法评分",
+                    "audio_url": f"/static/output/_eval/{stamp}/{wav_path.name}",
+                }
+                details.append(item)
+                if score is not None:
+                    scores_by_lang.setdefault(lang, []).append(score)
+    finally:
+        _eval_state["running"] = False
+        _eval_state["finished_at"] = datetime.now().isoformat(timespec="seconds")
 
     def avg(xs):
         return round(sum(xs) / len(xs), 4) if xs else None
@@ -1117,7 +1259,27 @@ def _do_evaluate():
     hist.append(record)
     _save_eval_history(hist)
 
+    _eval_state["stage"] = "完成"
     return {"ok": True, "result": record}
+
+
+@app.get("/api/eval/status")
+def eval_status():
+    """评测进度（前端轮询用）：当前第几句/共几句 + 阶段。"""
+    total = _eval_state["total"] or 0
+    current = _eval_state["current"]
+    return {
+        "running": _eval_state["running"],
+        "stage": _eval_state["stage"],
+        "progress": {
+            "current": current,
+            "total": total,
+            "percent": round(current * 100 / total, 1) if total else 0,
+        },
+        "started_at": _eval_state["started_at"],
+        "finished_at": _eval_state["finished_at"],
+        "last_error": _eval_state["last_error"],
+    }
 
 
 @app.get("/api/evaluations")
