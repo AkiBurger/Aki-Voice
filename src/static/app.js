@@ -23,6 +23,7 @@
     currentAudioUrl: null,
     engineUp: false,
     currentAudio: null,       // 当前正在播放的音频（全局只响一个）
+    abResults: [],            // 最近两次合成结果（A/B 对比）
     qcFilter: 'all',
     annFilter: 'all',
     datasetSnapshot: '',      // 上次的数据指纹，变了就清空质检/标注结果
@@ -157,8 +158,16 @@
     evalHistoryEmpty: $('evalHistoryEmpty'),
   };
 
-  // ---------- 页面切换（顶部标签）----------
+  // ---------- 页面切换（左侧导航）----------
   const VIEW_NAMES = ['synth', 'train', 'eval', 'material', 'qc', 'annotation'];
+  const VIEW_TITLES = {
+    synth: '语音合成', train: '训练模型', eval: '评测打分',
+    material: '素材', qc: '质检', annotation: '标注',
+  };
+
+  function navButtons() {
+    return document.querySelectorAll('.side-nav-item[data-view], .flow-step[data-view]');
+  }
 
   function switchView(name) {
     if (!VIEW_NAMES.includes(name)) name = 'synth';
@@ -166,9 +175,17 @@
       const el = document.getElementById('view-' + v);
       if (el) el.classList.toggle('hidden', v !== name);
     });
-    document.querySelectorAll('.flow-step[data-view]').forEach((b) => {
-      b.classList.toggle('current', b.dataset.view === name);
+    navButtons().forEach((b) => {
+      const on = b.dataset.view === name;
+      b.classList.toggle('current', on);
+      b.classList.toggle('active', on);
+      if (on) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
     });
+    // 顶栏页面标题
+    const title = VIEW_TITLES[name] || '语音合成';
+    const pageTitle = document.getElementById('pageTitle');
+    if (pageTitle) pageTitle.textContent = title;
     try {
       history.replaceState(null, '', '#' + name);
     } catch (e) {
@@ -186,9 +203,15 @@
       loadEvalTarget();
       loadEvalHistory();
     }
-    const TITLES = { synth: '语音合成', train: '训练模型', eval: '评测打分', material: '素材', qc: '质检', annotation: '标注' };
-    try { document.title = (TITLES[name] || '语音合成') + ' · AkiBurger Voice'; } catch (e) {}
-    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+    try { document.title = title + ' · AkiBurger Voice'; } catch (e) { /* 忽略 */ }
+    // 内容区滚动复位（新布局里滚动容器是 #contentScroll，不再是 window）
+    const scrollBox = document.getElementById('contentScroll');
+    try {
+      if (scrollBox) scrollBox.scrollTo({ top: 0, behavior: 'smooth' });
+      else window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      if (scrollBox) scrollBox.scrollTop = 0; else window.scrollTo(0, 0);
+    }
   }
 
   // ---------- 工具 ----------
@@ -246,6 +269,35 @@
   }
 
   // kind：'backend' = fetch 失败（后端不可达）；'engine' = 后端在但 engine_up=false；'http' = 健康检查报错
+  // 顶栏/侧栏状态文字：保留图标，只换文字
+  function setWithIconText(el, text) {
+    if (!el) return;
+    const inner = el.querySelector(':scope > span');
+    if (inner) { inner.textContent = text; return; }
+    for (const n of Array.from(el.childNodes)) {
+      if (n.nodeType === 3 && String(n.nodeValue).trim()) { n.nodeValue = text; return; }
+    }
+    el.appendChild(document.createTextNode(text));
+  }
+
+  function updateModelBadges() {
+    const sel = els.voiceSelect;
+    const opt = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+    let name = opt ? String(opt.textContent || '').trim() : '';
+    if (!name || name === '加载中…' || name === '暂无可用音色' || name === '未命名') name = '—';
+    const top = document.getElementById('topModelBadge');
+    const side = document.getElementById('sideModelName');
+    if (top) setWithIconText(top, '模型 ' + name);
+    if (side) side.textContent = name;
+  }
+
+  function updateTranslatorBadge(up) {
+    const top = document.getElementById('translatorBadge');
+    const side = document.getElementById('sideTranslator');
+    if (top) setWithIconText(top, '翻译 ' + (up ? '可用' : '未连接'));
+    if (side) setWithIconText(side, '翻译引擎 ' + (up ? '可用' : '未连接'));
+  }
+
   function setEngineUp(up, kind) {
     state.engineUp = up;
     els.engineBadge.textContent = up ? '引擎就绪' : '引擎未就绪';
@@ -266,6 +318,7 @@
       const h = await api('/api/health');
       const up = Boolean(h && h.engine_up);
       setEngineUp(up, up ? null : 'engine');
+      updateTranslatorBadge(Boolean(h && h.translator_up));
       // 历史不依赖引擎（P2 修复）：引擎没就绪时也把上次的合成记录列出来
       await loadHistory();
       if (up) {
@@ -306,6 +359,7 @@
       }
       els.voiceSelect.disabled = false;
       if (els.renameModelBtn) els.renameModelBtn.disabled = false;
+      updateModelBadges();
       // 记忆上次选择（localStorage 不可用时静默跳过，不能因此把音色列表判成加载失败）
       let last = '';
       try { last = localStorage.getItem('abv:voice') || ''; } catch (e) { last = ''; }
@@ -475,6 +529,8 @@
 
       state.currentAudioUrl = res.audio_url;
       els.resultAudio.src = res.audio_url;
+      pushABResult(res.audio_url);      // 记录最近两次结果，供 A/B 对比
+      loadWaveform(res.audio_url);      // 绘制波形
       els.downloadLink.href = res.audio_url;
       // 下载文件名带时间戳，避免每次都叫 full.wav
       els.downloadLink.download = 'voice_' + downloadStamp(new Date()) + '.wav';
@@ -484,7 +540,7 @@
       els.resultMeta.textContent =
         (res.lang ? res.lang.toUpperCase() + ' · ' : '') +
         (res.tone ? res.tone + ' · ' : '') +
-        (segs > 1 ? segs + ' 段拼接 · ' : '') +
+        (segs > 1 ? '文本分 ' + segs + ' 段 · ' : '') +
         '耗时 ' + (res.elapsed_ms != null ? (res.elapsed_ms / 1000).toFixed(1) : (elapsed / 1000).toFixed(1)) + ' 秒';
 
       loadHistory(); // 刷新历史
@@ -496,7 +552,7 @@
     } finally {
       state.inFlight = false;
       els.synthBtn.disabled = !state.engineUp;
-      els.synthBtn.querySelector('.btn-label').textContent = '🔊 合成';
+      els.synthBtn.querySelector('.btn-label').textContent = '合成';
       els.synthProgress.classList.add('hidden');
     }
   }
@@ -540,6 +596,117 @@
       if (state.currentAudio === a) state.currentAudio = null;
     });
     a.play().catch(() => {});
+  }
+
+  // ---------- 波形显示（结果区 #waveCanvas）----------
+  let wavePeaks = null;
+  let waveUrl = null;
+
+  function cssColor(name, fallback) {
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  async function loadWaveform(url) {
+    const canvas = document.getElementById('waveCanvas');
+    if (!canvas || !url) return;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const buf = await resp.arrayBuffer();
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const audio = await ctx.decodeAudioData(buf);
+      const ch = audio.getChannelData(0);
+      const bars = 180;
+      const step = Math.max(1, Math.floor(ch.length / bars));
+      const peaks = [];
+      for (let i = 0; i < bars; i++) {
+        let max = 0;
+        const base = i * step;
+        for (let j = 0; j < step; j++) {
+          const v = Math.abs(ch[base + j] || 0);
+          if (v > max) max = v;
+        }
+        peaks.push(max);
+      }
+      wavePeaks = peaks;
+      waveUrl = url;
+      if (ctx.close) ctx.close();
+      drawWaveform(0);
+    } catch (e) {
+      // 波形是增强功能，失败静默
+      wavePeaks = null;
+      const canvas2 = document.getElementById('waveCanvas');
+      if (canvas2) {
+        const c2 = canvas2.getContext('2d');
+        c2.clearRect(0, 0, canvas2.width, canvas2.height);
+      }
+    }
+  }
+
+  function drawWaveform(progress) {
+    const canvas = document.getElementById('waveCanvas');
+    if (!canvas || !wavePeaks) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || 800;
+    const cssH = canvas.clientHeight || 72;
+    canvas.width = Math.max(1, Math.floor(cssW * dpr));
+    canvas.height = Math.max(1, Math.floor(cssH * dpr));
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const cBase = cssColor('--primary', '#6366F1');
+    const cPlayed = cssColor('--accent', '#F97316');
+    const n = wavePeaks.length;
+    const slot = cssW / n;
+    const bw = Math.max(1.5, slot * 0.62);
+    const mid = cssH / 2;
+    for (let i = 0; i < n; i++) {
+      const h = Math.max(2, wavePeaks[i] * cssH * 0.86);
+      const x = i * slot + (slot - bw) / 2;
+      ctx.fillStyle = (x / cssW) <= progress ? cPlayed : cBase;
+      ctx.fillRect(x, mid - h / 2, bw, h);
+    }
+  }
+
+  // ---------- A/B 对比（最近两次合成）----------
+  function pushABResult(url) {
+    if (!url) return;
+    if (!Array.isArray(state.abResults)) state.abResults = [];
+    const arr = state.abResults;
+    if (arr[arr.length - 1] === url) return;
+    arr.push(url);
+    while (arr.length > 2) arr.shift();
+    renderAB();
+  }
+
+  function renderAB() {
+    const box = document.getElementById('abCompare');
+    if (!box) return;
+    const arr = Array.isArray(state.abResults) ? state.abResults : [];
+    box.classList.toggle('hidden', arr.length < 2);
+    const hint = document.getElementById('abHint');
+    if (hint) hint.textContent = arr.length >= 2 ? '对比最近两次合成' : '';
+    const a1 = document.getElementById('abAaBtn');
+    const b1 = document.getElementById('abBbBtn');
+    if (a1) a1.disabled = arr.length < 2;
+    if (b1) b1.disabled = arr.length < 2;
+  }
+
+  function playAB(which) {
+    const arr = Array.isArray(state.abResults) ? state.abResults : [];
+    const url = which === 'A' ? arr[0] : arr[1];
+    if (!url) return;
+    playAudio(url);
+    const hint = document.getElementById('abHint');
+    if (hint) hint.textContent = '正在播放：' + which;
   }
 
   // ---------- 素材页 ----------
@@ -1004,7 +1171,7 @@
       const st = await api('/api/train/status');
       const running = st.running;
       els.trainBadge.textContent = running ? '训练中' : (st.success === true ? '已完成' : (st.success === false ? '失败/已停' : '空闲'));
-      els.trainBadge.className = 'badge ' + (running ? 'badge-warn' : (st.success === true ? 'badge-ok' : (st.success === false ? 'badge-danger' : 'badge-warn')));
+      els.trainBadge.className = 'badge ' + (running ? 'badge-warn' : (st.success === true ? 'badge-ok' : (st.success === false ? 'badge-danger' : 'badge-neutral')));
       els.trainStartBtn.disabled = running || !state.engineUp;
       els.trainStopBtn.classList.toggle('hidden', !running);
       els.trainProgress.classList.toggle('hidden', !running && st.stage_index < 0 && !st.log_path);
@@ -1699,6 +1866,21 @@
   els.previewBtn.addEventListener('click', previewVoice);
   // 结果播放器开始播放时停掉其它来源（批量/历史/试听），同一时间只响一个
   els.resultAudio.addEventListener('play', () => stopAll(els.resultAudio));
+  // 波形播放进度
+  els.resultAudio.addEventListener('timeupdate', () => {
+    if (!wavePeaks) return;
+    const d = els.resultAudio.duration;
+    if (d && isFinite(d)) drawWaveform(Math.min(1, els.resultAudio.currentTime / d));
+  });
+  window.addEventListener('resize', () => {
+    if (wavePeaks) drawWaveform(0);
+  });
+  // A/B 对比按钮
+  const abA = document.getElementById('abAaBtn');
+  const abB = document.getElementById('abBbBtn');
+  if (abA) abA.addEventListener('click', () => playAB('A'));
+  if (abB) abB.addEventListener('click', () => playAB('B'));
+  renderAB();
   els.savePresetBtn.addEventListener('click', saveCurrentPreset);
   if (els.renameModelBtn) els.renameModelBtn.addEventListener('click', renameCurrentModel);
   if (els.evalBtn) els.evalBtn.addEventListener('click', runEvaluation);
@@ -1862,7 +2044,7 @@
   updateMeta();
   renderPresets();
   // 顶部标签切换
-  document.querySelectorAll('.flow-step[data-view]').forEach((b) => {
+  document.querySelectorAll('.side-nav-item[data-view], .flow-step[data-view]').forEach((b) => {
     b.addEventListener('click', () => switchView(b.dataset.view));
   });
   // 直接带 #train / #eval 打开也能定位
