@@ -95,22 +95,26 @@ def _convert_one(src: Path, dst: Path) -> bool:
 
 def start_import(path_str: str, max_samples: int = 0) -> dict:
     """把文件夹里的音频导入成训练用的 wav（后台跑）。"""
-    # 互斥：扫描文件之前就要占住任务位，否则两个导入能同时开跑
+    # P0 修复：路径/文件校验放在 acquire 之前 ——
+    # 以前"不是文件夹""没音频"两条 early return 没释放 _task_lock，
+    # 锁被永久占住，导入/识别/训练全被 is_busy() 拒绝，只能重启后端。
+    # 现在校验失败直接返回，不碰锁。
+    src = _resolve(path_str)
+    if not src.is_dir():
+        return {"ok": False, "message": f"不是文件夹：{src}"}
+
+    files = [f for f in src.rglob("*") if f.is_file() and f.suffix.lower() in AUDIO_EXT]
+    files.sort()
+    if not files:
+        return {"ok": False, "message": "这个文件夹里没有找到音频文件（支持 ogg/wav/flac/mp3 等）"}
+    # max_samples <= 0 表示全部导入（默认）
+    if max_samples and int(max_samples) > 0:
+        files = files[: int(max_samples)]
+
+    # 互斥：文件列表确认没问题后，才占住任务位
     if not _task_lock.acquire(blocking=False):
         return {"ok": False, "message": "有任务在跑，等它结束"}
     try:
-        src = _resolve(path_str)
-        if not src.is_dir():
-            return {"ok": False, "message": f"不是文件夹：{src}"}
-
-        files = [f for f in src.rglob("*") if f.is_file() and f.suffix.lower() in AUDIO_EXT]
-        files.sort()
-        if not files:
-            return {"ok": False, "message": "这个文件夹里没有找到音频文件（支持 ogg/wav/flac/mp3 等）"}
-        # max_samples <= 0 表示全部导入（默认）
-        if max_samples and int(max_samples) > 0:
-            files = files[: int(max_samples)]
-
         WAV_DIR.mkdir(parents=True, exist_ok=True)
         with _lock:
             _logs.clear()

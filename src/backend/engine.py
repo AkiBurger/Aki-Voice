@@ -137,16 +137,21 @@ def synthesize(text: str, text_lang: str, ref_audio_path: str,
             raise EngineError(f"引擎返回的不是音频（{len(body)} 字节, {ct}），请重启引擎再试")
         return body
 
-    # 引擎返回的错误一般是 JSON
+    # 引擎返回的错误一般是 JSON：{"message": "tts failed", "Exception": "真实原因"}
+    # 修映射：message 只是兜底文案，Exception 里才有真实原因 —— 优先 Exception
     try:
         detail = r.json()
-        msg = detail.get("message") or detail.get("Exception") or "未知错误"
+        exc = str(detail.get("Exception") or "").strip()
+        generic = str(detail.get("message") or "").strip()
+        msg = exc or generic or "未知错误"
     except Exception:
         msg = r.text[:200] or "未知错误"
 
-    # 把引擎的英文错误翻成人话（常见几种）
+    # 把引擎的常见错误翻成人话
     if "out of memory" in str(msg).lower():
         raise EngineError("显存不够了。把别的大程序关掉，或者重启引擎再试")
     if "not exists" in str(msg):
         raise EngineError(f"参考音频文件不存在：{ref_audio_path}")
+    if "3~10" in str(msg) and ("参考音频" in str(msg) or "秒" in str(msg)):
+        raise EngineError("参考音频时长要在 3~10 秒之间，换一条时长合适的参考音频再试")
     raise EngineError(f"合成失败：{msg}")

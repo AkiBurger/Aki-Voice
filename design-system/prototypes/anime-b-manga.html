@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>样张 B · 漫画分镜 — AkiBurger Voice</title>
+<style>
+  /* ============================================================
+     样张 B：漫画分镜 / 黑白网点
+     网点 · 集中线 · 分镜框 · 粗墨线 · 红黄强调 · 拟声词
+     纯静态：无 canvas、无 JS、无持续动画
+     ============================================================ */
+  :root {
+    --paper: #F4F0E6;
+    --paper-2: #EDE8DB;
+    --panel: #FFFDF7;
+    --ink: #141414;
+    --ink-2: #3A3A3A;
+    --ink-faint: #7A7A72;
+    --line: #141414;
+    --red: #D7263D;
+    --yellow: #FFC400;
+    --gray: #D9D4C7;
+    --sans: "Microsoft YaHei", "Yu Gothic UI", "Segoe UI", sans-serif;
+    --black: "Arial Black", "Microsoft YaHei", sans-serif;
+    --mono: "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; overflow: hidden;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 13px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* 网点背景 */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(20,20,20,.16) 1.3px, transparent 1.4px);
+    background-size: 11px 11px;
+    opacity: .9;
+  }
+  /* 背景集中线（静态 SVG 不便，用重复条纹斜切块） */
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background:
+      repeating-linear-gradient(-24deg, rgba(20,20,20,.055) 0 2px, transparent 2px 15px);
+    opacity: .8;
+  }
+  .app { position: relative; display: grid; grid-template-columns: 214px minmax(0, 1fr); height: 100vh; }
+
+  /* ================= 侧栏 ================= */
+  .side {
+    display: flex; flex-direction: column; min-height: 0;
+    padding: 14px 12px 12px;
+    background: var(--panel);
+    border-right: 3px solid var(--line);
+  }
+  .masthead {
+    position: relative;
+    padding: 10px 10px 8px;
+    background: var(--ink);
+    color: #FFFDF7;
+    transform: rotate(-1.2deg);
+    box-shadow: 4px 4px 0 var(--red);
+  }
+  .masthead .jp { font-size: 9px; letter-spacing: .34em; color: var(--yellow); }
+  .masthead .name { font-family: var(--black); font-size: 19px; letter-spacing: .02em; line-height: 1.1; margin-top: 2px; }
+  .masthead .sub { font-size: 8.5px; letter-spacing: .3em; color: #C9C4B6; margin-top: 3px; }
+  .nav { flex: 1 1 auto; min-height: 0; overflow: auto; padding-top: 16px; }
+  .nav-group + .nav-group { margin-top: 12px; }
+  .nav-title {
+    display: inline-block;
+    padding: 1px 8px;
+    background: var(--ink); color: var(--panel);
+    font-family: var(--black); font-size: 10px; letter-spacing: .2em;
+    transform: skewX(-10deg);
+    margin: 0 0 6px 2px;
+  }
+  .nav a {
+    display: flex; align-items: center; gap: 8px;
+    height: 36px; padding: 0 9px; margin-bottom: 5px;
+    border: 2px solid var(--ink);
+    background: var(--panel);
+    color: var(--ink); text-decoration: none;
+    font-weight: 700; font-size: 13px;
+    box-shadow: 3px 3px 0 rgba(20,20,20,.22);
+  }
+  .nav a .no { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+  .nav a .en { margin-left: auto; font-family: var(--black); font-size: 8.5px; letter-spacing: .1em; color: var(--ink-faint); }
+  .nav a:hover { background: var(--yellow); }
+  .nav a.on { background: var(--ink); color: var(--panel); box-shadow: 3px 3px 0 var(--red); }
+  .nav a.on .no, .nav a.on .en { color: var(--yellow); }
+  .side-foot { border-top: 3px solid var(--ink); margin-top: 8px; padding-top: 9px; }
+  .stamp {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 10px; color: var(--ink-2);
+  }
+  .stamp + .stamp { margin-top: 5px; }
+  .stamp b { font-family: var(--black); font-size: 11px; }
+  .stamp .ok { display: inline-flex; align-items: center; gap: 4px; }
+  .stamp .ok::before { content: ""; width: 7px; height: 7px; background: var(--red); border: 1.5px solid var(--ink); }
+
+  /* ================= 主区 ================= */
+  .main { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
+  .topbar {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+    height: 54px; padding: 0 30px;
+    background: var(--panel);
+    border-bottom: 3px solid var(--ink);
+  }
+  .topbar-title {
+    font-family: var(--black); font-size: 20px; letter-spacing: .02em;
+    transform: skewX(-4deg);
+    background: linear-gradient(transparent 58%, var(--yellow) 58%);
+    padding: 0 4px;
+  }
+  .topbar-right { display: flex; align-items: center; gap: 7px; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 23px; padding: 0 8px;
+    border: 2px solid var(--ink); background: var(--panel);
+    font-size: 10px; font-weight: 700; letter-spacing: .04em;
+    box-shadow: 2px 2px 0 rgba(20,20,20,.25);
+  }
+  .tag i { width: 6px; height: 6px; background: var(--red); }
+  .tag.y { background: var(--yellow); transform: rotate(-2deg); }
+  .icon-btn {
+    width: 30px; height: 30px; border: 2px solid var(--ink); background: var(--panel);
+    color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 3px 3px 0 rgba(20,20,20,.25);
+  }
+  .icon-btn:hover { background: var(--yellow); }
+
+  .scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  .page { position: relative; max-width: 1176px; margin: 0 auto; padding: 14px 30px 20px; }
+
+  /* ================= 页头 ================= */
+  .page-head {
+    position: relative;
+    padding: 10px 16px;
+    border: 3px solid var(--ink);
+    background: var(--panel);
+    box-shadow: 6px 6px 0 var(--ink);
+  }
+  .page-head::after {
+    content: "P.01";
+    position: absolute; right: 14px; bottom: -12px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+    background: var(--panel); padding: 0 5px; border: 2px solid var(--ink);
+  }
+  .kicker {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--black); font-size: 10px; letter-spacing: .18em;
+    color: var(--red);
+  }
+  .kicker::before { content: ""; width: 22px; height: 3px; background: var(--red); }
+  .page-title {
+    margin: 5px 0 0;
+    font-family: var(--black); font-size: 28px; letter-spacing: .01em; line-height: 1.05;
+    text-shadow: 3px 3px 0 var(--yellow);
+  }
+  .page-title small {
+    font-family: var(--sans); font-size: 12px; font-weight: 700; letter-spacing: .2em;
+    color: var(--ink-2); margin-left: 12px; vertical-align: 6px;
+  }
+  .page-sub { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2); }
+  .page-sub b { background: var(--yellow); padding: 0 3px; }
+  .head-burst {
+    position: absolute; right: 18px; top: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .style-chip {
+    padding: 3px 9px; border: 2px solid var(--ink);
+    background: var(--paper); font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+    transform: rotate(2deg);
+  }
+  .burst {
+    position: relative; width: 62px; height: 62px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--red); color: #FFFDF7;
+    font-family: var(--black); font-size: 13px; letter-spacing: .04em;
+    clip-path: polygon(50% 0%, 61% 18%, 82% 8%, 84% 30%, 100% 40%, 86% 55%, 96% 76%, 72% 78%, 64% 100%, 48% 84%, 28% 96%, 24% 72%, 4% 62%, 19% 46%, 10% 24%, 34% 24%, 40% 4%);
+    transform: rotate(-8deg);
+  }
+
+  /* ================= 两栏 ================= */
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; margin-top: 10px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+  .panel {
+    position: relative;
+    padding: 11px 14px;
+    background: var(--panel);
+    border: 2.5px solid var(--ink);
+    box-shadow: 4px 4px 0 rgba(20,20,20,.85);
+  }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .panel-title {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--black); font-size: 16px; letter-spacing: .02em;
+  }
+  .panel-title::before { content: ""; width: 14px; height: 14px; background: var(--ink); }
+  .panel-no {
+    font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .08em;
+  }
+  .field-label { display: block; margin-bottom: 6px; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; color: var(--ink-2); }
+
+  /* 语言 */
+  .lang-row { display: flex; align-items: flex-start; gap: 14px; }
+  .lang-blk { flex: 1 1 0; min-width: 0; }
+  .langs { display: flex; gap: 6px; }
+  .lang {
+    height: 28px; padding: 0 11px;
+    border: 2px solid var(--ink); background: var(--panel);
+    font-weight: 700; font-size: 12.5px; cursor: pointer;
+    box-shadow: 2px 2px 0 rgba(20,20,20,.2);
+  }
+  .lang:hover { background: var(--yellow); }
+  .lang.on { background: var(--ink); color: var(--panel); box-shadow: 2px 2px 0 var(--red); }
+  .lang-arrow { padding-top: 26px; font-family: var(--black); font-size: 15px; color: var(--red); }
+  .lang-note { margin-top: 7px; font-size: 10.5px; color: var(--ink-2); background: var(--paper); padding: 4px 8px; border-left: 3px solid var(--yellow); }
+
+  /* 台词 */
+  .text-wrap { position: relative; }
+  .text-input {
+    width: 100%; min-height: 88px; resize: none;
+    padding: 9px 12px;
+    border: 2.5px solid var(--ink);
+    background: #FFFDF7;
+    color: var(--ink); font-family: "Yu Gothic UI", "Microsoft YaHei", sans-serif;
+    font-size: 13.5px; line-height: 1.8;
+    outline: none;
+  }
+  .text-input:focus { background: #FFF9DC; box-shadow: inset 0 0 0 2px var(--yellow); }
+  .gogo {
+    position: absolute; right: 10px; bottom: 8px;
+    font-family: var(--black); font-size: 26px; color: rgba(20,20,20,.14);
+    letter-spacing: .1em; transform: rotate(-6deg); pointer-events: none;
+  }
+  .text-meta { display: flex; gap: 8px; margin-top: 5px; font-family: var(--mono); font-size: 10px; color: var(--ink-2); }
+  .text-meta .right { margin-left: auto; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+  /* 语气 */
+  .tones { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tone {
+    height: 28px; padding: 0 11px;
+    border: 2px solid var(--ink); background: var(--panel);
+    font-weight: 700; font-size: 12px; cursor: pointer;
+    box-shadow: 2px 2px 0 rgba(20,20,20,.2);
+  }
+  .tone:hover { background: var(--yellow); }
+  .tone.on { background: var(--yellow); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+  .tone-note { margin-top: 6px; font-size: 10.5px; color: var(--ink-2); }
+
+  /* CTA */
+  .actions { display: flex; gap: 10px; align-items: stretch; }
+  .cta {
+    position: relative; flex: 1 1 auto;
+    display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+    height: 44px;
+    border: 3px solid var(--ink); background: var(--ink); color: var(--panel);
+    font-family: var(--black); font-size: 20px; letter-spacing: .16em;
+    cursor: pointer; transform: skewX(-4deg);
+    box-shadow: 5px 5px 0 var(--red);
+  }
+  .cta span { transform: skewX(4deg); }
+  .cta .hint { font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em; color: var(--yellow); }
+  .cta:hover { background: #000; color: var(--yellow); }
+  .cta::after {
+    content: "ドン!"; position: absolute; right: -6px; top: -22px;
+    font-family: var(--black); font-size: 15px; color: var(--red);
+    transform: rotate(8deg); pointer-events: none;
+  }
+  .ghost {
+    flex: 0 0 auto; height: 44px; padding: 0 14px;
+    display: inline-flex; align-items: center;
+    border: 2.5px solid var(--ink); background: var(--panel); color: var(--ink);
+    font-weight: 700; font-size: 12.5px; cursor: pointer;
+    box-shadow: 4px 4px 0 rgba(20,20,20,.8);
+  }
+  .ghost:hover { background: var(--yellow); }
+
+  /* 右栏 */
+  .select {
+    width: 100%; height: 30px; padding: 0 7px;
+    border: 2px solid var(--ink); background: var(--panel);
+    font-weight: 700; font-size: 12.5px; cursor: pointer; outline: none;
+  }
+  .select:focus { box-shadow: inset 0 0 0 2px var(--yellow); }
+  .model-links { display: flex; gap: 10px; margin-top: 5px; }
+  .model-links button {
+    border: 1.5px solid var(--ink); background: var(--panel); padding: 3px 10px;
+    font-size: 10.5px; font-weight: 700; cursor: pointer;
+  }
+  .model-links button:hover { background: var(--yellow); }
+  .hint-line { margin-top: 4px; font-size: 10px; color: var(--ink-2); }
+  .adv-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .adv-title { font-weight: 700; font-size: 12.5px; }
+  .adv-note { margin-top: 4px; font-size: 10px; color: var(--ink-2); }
+  .chev { width: 12px; height: 12px; }
+  .preset-empty {
+    padding: 8px 2px 2px; border-top: 2px dashed rgba(20,20,20,.3);
+    font-size: 11.5px; color: var(--ink-2);
+  }
+  .preset-empty span { display: block; margin-top: 3px; font-size: 10.5px; }
+
+  /* 角色分镜 */
+  .char-panel { overflow: hidden; padding: 0; }
+  .char-panel .char-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px; border-bottom: 2.5px solid var(--ink);
+    background: var(--ink); color: var(--panel);
+    font-family: var(--black); font-size: 12px; letter-spacing: .1em;
+  }
+  .char-panel .char-head span { color: var(--yellow); font-size: 9px; letter-spacing: .16em; }
+  .char-wrap { position: relative; height: 110px; background: #FFFDF7; }
+  .char-wrap svg { display: block; width: 100%; height: 100%; }
+  .bubble {
+    position: absolute; left: 10px; top: 12px;
+    padding: 6px 10px;
+    border: 2px solid var(--ink); background: var(--panel);
+    font-size: 11.5px; font-weight: 700; line-height: 1.4;
+    box-shadow: 3px 3px 0 rgba(20,20,20,.75);
+    transform: rotate(-2deg);
+  }
+  .bubble::after {
+    content: ""; position: absolute; right: 18px; bottom: -8px;
+    width: 12px; height: 12px; background: var(--panel);
+    border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+    transform: rotate(45deg);
+  }
+  .char-caption {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 5px 12px; border-top: 2.5px solid var(--ink);
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; color: var(--ink-2);
+  }
+
+  /* 页脚 */
+  .footer {
+    flex-shrink: 0; display: flex; align-items: center; gap: 8px;
+    padding: 7px 30px; border-top: 3px solid var(--ink);
+    background: var(--panel); font-size: 10px; color: var(--ink-2);
+  }
+  .footer .right { margin-left: auto; font-family: var(--mono); letter-spacing: .14em; }
+  .footer b { background: var(--yellow); padding: 0 4px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ================= 侧栏 ================= -->
+  <aside class="side">
+    <div class="masthead">
+      <div class="jp">週刊ボイス・スタジオ</div>
+      <div class="name">AKI BURGER</div>
+      <div class="sub">VOICE DUBBING STUDIO</div>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-group">
+        <div class="nav-title">创作</div>
+        <a href="#synth" class="on" aria-current="page"><span class="no">01</span>语音合成<span class="en">SYNTH</span></a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-title">训练流水线</div>
+        <a href="#material"><span class="no">02</span>素材<span class="en">MAT</span></a>
+        <a href="#qc"><span class="no">03</span>质检<span class="en">QC</span></a>
+        <a href="#annotate"><span class="no">04</span>标注<span class="en">ANN</span></a>
+        <a href="#train"><span class="no">05</span>训练<span class="en">TRAIN</span></a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-title">质量</div>
+        <a href="#eval"><span class="no">06</span>评测<span class="en">EVAL</span></a>
+      </div>
+    </nav>
+
+    <div class="side-foot">
+      <div class="stamp"><span class="ok">引擎就绪</span><b>v0.3.0</b></div>
+      <div class="stamp"><span>当前模型</span><b>雪菜</b></div>
+      <div class="stamp"><span>翻译引擎</span><b>可用</b></div>
+    </div>
+  </aside>
+
+  <!-- ================= 主区 ================= -->
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title">语音合成</div>
+      <div class="topbar-right">
+        <span class="tag"><i></i>模型 雪菜</span>
+        <span class="tag">翻译 可用</span>
+        <span class="tag y">v0.3.0</span>
+        <button class="icon-btn" type="button" aria-label="设置">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="scroll">
+      <div class="page">
+        <header class="page-head">
+          <div class="head-burst">
+            <span class="style-chip">SAMPLE B · 漫画分镜</span>
+            <div class="burst">ドン!</div>
+          </div>
+          <div class="kicker">SYNTHESIZE ／ 第1話「声、はじめます」</div>
+          <h1 class="page-title">语音合成<small>VOICE, SET!</small></h1>
+          <p class="page-sub">写下台词，选择语言与语气，让<b>雪菜</b>的声音替你开口——准备好了吗？</p>
+        </header>
+
+        <div class="grid">
+          <!-- ===== 左栏 ===== -->
+          <section class="col">
+
+            <article class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">语言</h2>
+                <span class="panel-no">PANEL 01 / LANGUAGE</span>
+              </div>
+              <div class="lang-row">
+                <div class="lang-blk">
+                  <span class="field-label">我输入的语言</span>
+                  <div class="langs" role="group" aria-label="我输入的语言">
+                    <button class="lang on" type="button">中文</button>
+                    <button class="lang" type="button">日文</button>
+                    <button class="lang" type="button">英文</button>
+                  </div>
+                </div>
+                <div class="lang-arrow" aria-hidden="true">→</div>
+                <div class="lang-blk">
+                  <span class="field-label">输出的语言</span>
+                  <div class="langs" role="group" aria-label="输出的语言">
+                    <button class="lang" type="button">中文</button>
+                    <button class="lang" type="button">英文</button>
+                    <button class="lang on" type="button">日文</button>
+                  </div>
+                </div>
+              </div>
+              <p class="lang-note">输入中文 → 先用本地模型翻译成日文，再用训练好的声音读出来。</p>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">要念的话</h2>
+                <span class="panel-no">PANEL 02 / SCRIPT</span>
+              </div>
+              <div class="text-wrap">
+                <textarea class="text-input" rows="4" spellcheck="false" aria-label="要念的话">今日はいい天気ですね。少しだけ、話をしましょう。</textarea>
+                <span class="gogo" aria-hidden="true">ゴゴゴ</span>
+              </div>
+              <div class="text-meta">
+                <span>23 字</span><span>·</span><span>预计约 5 秒</span>
+                <span class="right">清空</span>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">语气</h2>
+                <span class="panel-no">PANEL 03 / TONE</span>
+              </div>
+              <div class="tones" role="group" aria-label="语气">
+                <button class="tone on" type="button">平静</button>
+                <button class="tone" type="button">开心</button>
+                <button class="tone" type="button">悲伤</button>
+                <button class="tone" type="button">生气</button>
+                <button class="tone" type="button">惊讶</button>
+                <button class="tone" type="button">害怕</button>
+                <button class="tone" type="button">自动</button>
+              </div>
+              <p class="tone-note">语气会自动从文本里判断，也可以自己点选。</p>
+            </article>
+
+            <div class="actions">
+              <button class="cta" type="button"><span>合成</span><span class="hint">Ctrl+Enter</span></button>
+              <button class="ghost" type="button">批量合成</button>
+            </div>
+
+          </section>
+
+          <!-- ===== 右栏 ===== -->
+          <aside class="col">
+
+            <article class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">模型</h2>
+                <span class="panel-no">PANEL 04</span>
+              </div>
+              <label class="field-label" for="voice">当前音色</label>
+              <select class="select" id="voice"><option>雪菜 · 默认参考音频</option></select>
+              <div class="model-links">
+                <button type="button">试听</button>
+                <button type="button">改名</button>
+              </div>
+              <label class="field-label" for="ref" style="margin-top:11px">参考音频</label>
+              <select class="select" id="ref"><option>自动（按语气挑选）</option></select>
+              <p class="hint-line">自动：按语气从素材里挑参考；指定：固定用这条参考。</p>
+            </article>
+
+            <article class="panel">
+              <div class="adv-row">
+                <span class="adv-title">音质微调（合成不满意时用）</span>
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+              <p class="adv-note">稳定度、随机种子等进阶选项，点开后调整。</p>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">预设</h2>
+                <span class="panel-no">PANEL 05</span>
+              </div>
+              <div class="preset-empty">还没有预设。<span>合成出满意的结果后，点「存成预设」。</span></div>
+            </article>
+
+            <!-- 角色分镜 -->
+            <article class="panel char-panel">
+              <div class="char-head">角色分镜 <span>CHARACTER PANEL</span></div>
+              <div class="char-wrap">
+                <div class="bubble">声、出してみよう。</div>
+                <svg viewBox="0 0 320 190" role="img" aria-label="漫画线条角色：黑发少女，水手领与红围巾">
+                  <defs>
+                    <pattern id="halftone" width="7" height="7" patternUnits="userSpaceOnUse">
+                      <circle cx="2" cy="2" r="1.3" fill="#141414" opacity=".5"/>
+                    </pattern>
+                  </defs>
+                  <!-- 集中线 -->
+                  <g stroke="#141414" stroke-width="1.1" opacity=".35">
+                    <path d="M0 95 92 88M0 70 90 82M0 118 88 96M320 84 236 92M320 60 238 84M320 112 240 98"/>
+                  </g>
+                  <!-- 网点块 -->
+                  <rect x="214" y="12" width="94" height="166" fill="url(#halftone)" opacity=".55"/>
+                  <!-- 身体 -->
+                  <path d="M132 190c7-38 24-56 52-56s45 18 52 56z" fill="#FFFDF7" stroke="#141414" stroke-width="3"/>
+                  <path d="M150 148l34 26 34-26 6 10-40 30-40-30z" fill="#141414" stroke="#141414" stroke-width="3" stroke-linejoin="round"/>
+                  <path d="M150 148l34 26 34-26" fill="none" stroke="#FFFDF7" stroke-width="2"/>
+                  <!-- 红围巾 -->
+                  <path d="M176 146c-8 8-10 16-8 26l14-6 2-20zM200 146c8 8 10 16 8 26l-14-6-2-20z" fill="#D7263D" stroke="#141414" stroke-width="2.4" stroke-linejoin="round"/>
+                  <!-- 颈 / 脸 -->
+                  <path d="M166 122h32v16c0 7-7 12-16 12s-16-5-16-12z" fill="#FFFDF7" stroke="#141414" stroke-width="3"/>
+                  <path d="M142 74c0-30 18-50 40-50s40 20 40 50c0 28-18 50-40 50s-40-22-40-50z" fill="#FFFDF7" stroke="#141414" stroke-width="3"/>
+                  <!-- 黑发 -->
+                  <path d="M138 78c-2-34 18-58 44-58s46 24 44 58c-6-16-20-26-44-26s-38 10-44 26z" fill="#141414"/>
+                  <path d="M142 64l-10 34 16-10zM236 64l10 34-16-10z" fill="#141414"/>
+                  <path d="M170 18l-6-12 12 6zM196 18l6-12-2 14z" fill="#141414"/>
+                  <!-- 眼睛（漫画高光） -->
+                  <path d="M158 76c6-9 20-9 26 0-6 8-20 8-26 0z" fill="#141414"/>
+                  <path d="M196 76c6-9 20-9 26 0-6 8-20 8-26 0z" fill="#141414"/>
+                  <circle cx="166" cy="73" r="3" fill="#FFFDF7"/>
+                  <circle cx="204" cy="73" r="3" fill="#FFFDF7"/>
+                  <path d="M156 62c5-4 13-4 18 0M198 62c5-4 13-4 18 0" fill="none" stroke="#141414" stroke-width="2.4" stroke-linecap="round"/>
+                  <!-- 鼻 / 嘴 / 腮红网点 -->
+                  <path d="M180 88l-4 6h8" fill="none" stroke="#141414" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M172 106c5 4 11 4 16 0" fill="none" stroke="#141414" stroke-width="2.6" stroke-linecap="round"/>
+                  <rect x="146" y="94" width="16" height="8" fill="url(#halftone)"/>
+                  <rect x="198" y="94" width="16" height="8" fill="url(#halftone)"/>
+                  <!-- 耳机 -->
+                  <path d="M136 84c0-28 20-48 46-48s46 20 46 48" fill="none" stroke="#141414" stroke-width="4" stroke-linecap="round"/>
+                  <rect x="128" y="80" width="12" height="26" rx="5" fill="#FFFDF7" stroke="#141414" stroke-width="3"/>
+                  <rect x="240" y="80" width="12" height="26" rx="5" fill="#FFFDF7" stroke="#141414" stroke-width="3"/>
+                  <!-- 拟声词 -->
+                  <text x="24" y="170" font-family="Arial Black, Microsoft YaHei" font-size="26" fill="#D7263D" transform="rotate(-8 24 170)">ゴゴゴ</text>
+                </svg>
+              </div>
+              <div class="char-caption"><span>阿基 · アキ</span><span>INK / TONE / STATIC</span></div>
+            </article>
+
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <span>本地运行，你的声音和文字不会离开这台电脑。</span>
+      <span>·</span>
+      <span>引擎在线</span>
+      <span class="right"><b>SAMPLE B</b> — MANGA</span>
+    </footer>
+  </main>
+</div>
+</body>
+</html>

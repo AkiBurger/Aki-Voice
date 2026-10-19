@@ -680,28 +680,22 @@ def ref_from_history(req: RefFromHistoryRequest):
 
     stem = f"hist_{t}"
     dst = REF_DIR / f"{stem}.wav"
-    REF_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(str(src), str(dst))      # 覆盖式复制，幂等
 
-    # 时长（soundfile 读；读不到就 None）
-    # 引擎只接受 3~10 秒的参考音频（实测：2.91s 直接被引擎拒"参考音频在3~10秒范围外"）。
-    # 契约里 <1s/>15s 的提示偏宽，这里按引擎真实限制给 warning（超范围仍保存，但会提醒）。
+    # 引擎硬性要求参考音频 3~10 秒（实测 2.91s 会被引擎 400 拒绝）。
+    # 超范围直接拒绝保存（简单可靠），不让用户固化出一条合成必失败的参考。
     duration = None
-    warning = ""
     try:
         import soundfile as sf
-        info = sf.info(str(dst))
+        info = sf.info(str(src))
         duration = round(info.frames / info.samplerate, 2)
-        if duration < 1.0:
-            warning = "参考音频较短（不足 1 秒），效果可能变差"
-        elif duration > 15.0:
-            warning = "参考音频较长（超过 15 秒），效果可能变差"
-        if 1.0 <= duration < 3.0:
-            warning = f"参考音频 {duration} 秒，低于引擎要求的 3~10 秒范围，合成时会失败，建议换一条更长的历史"
-        elif duration > 10.0:
-            warning = f"参考音频 {duration} 秒，超过引擎要求的 3~10 秒范围，建议换一条更短的历史"
     except Exception:
         pass
+    if duration is not None and not (3.0 <= duration <= 10.0):
+        raise HTTPException(status_code=400, detail=(
+            f"这段只有 {duration} 秒，引擎要求参考音频在 3~10 秒，换一条时长合适的历史再固化"))
+
+    REF_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(str(src), str(dst))      # 覆盖式复制，幂等
 
     text = (meta.get("text") or "").strip()
     entry = {
@@ -737,7 +731,7 @@ def ref_from_history(req: RefFromHistoryRequest):
             "model": entry["model"],
             "tone": entry["tone"],
         },
-        "warning": warning,
+        "warning": "",   # 时长已在保存前校验（3~10 秒），这里恒为空，保留字段兼容
     }
 
 
