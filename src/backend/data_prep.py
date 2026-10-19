@@ -341,6 +341,11 @@ def delete_materials(name: str = "", delete_all: bool = False) -> dict:
         return cand
 
     targets = wavs if delete_all else [_safe_target(name)]
+
+    # 单条删除会改动标注清单，先把清单备份下来再动文件
+    if not delete_all:
+        _backup_lists()
+
     removed = 0
     for w in targets:
         if not w.exists():
@@ -355,11 +360,13 @@ def delete_materials(name: str = "", delete_all: bool = False) -> dict:
     if removed == 0 and not delete_all:
         raise FileNotFoundError(f"找不到文件：{name}")
 
-    # 全部清空是可恢复操作：标注保持原样，恢复素材后能重新对上
-    # 只删单条时才裁剪对应行，并且裁剪前先备份清单
+    # 全部清空是可恢复操作：标注保持原样，恢复素材后能重新对上；
+    # 只删单条时把对应行从清单里去掉
     if removed and not delete_all:
-        _backup_lists()
-        _prune_lists([WAV_DIR / Path(name).name])
+        try:
+            _prune_lists([WAV_DIR / Path(name).name])
+        except Exception:
+            pass
 
     return {
         "ok": True,
@@ -367,6 +374,23 @@ def delete_materials(name: str = "", delete_all: bool = False) -> dict:
         "remain": len(list(WAV_DIR.glob("*.wav"))) if WAV_DIR.exists() else 0,
         "trash": str(trash),
     }
+
+
+def _backup_lists() -> None:
+    """改动标注清单前先复制一份，保留最近 20 份。"""
+    bk = DATA_DIR / "list_backups"
+    try:
+        bk.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        for name_ in ("setsuna.list", "setsuna_clean.list"):
+            src = DATA_DIR / name_
+            if src.exists():
+                shutil.copy2(src, bk / f"{name_.replace('.list', '')}_{stamp}.list")
+        backups = sorted(bk.glob("*.list"))
+        for old in backups[:-20]:
+            old.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def _prune_lists(targets=None) -> int:

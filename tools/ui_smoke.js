@@ -103,6 +103,22 @@ async function main() {
     checks.materialRows = await evaluate("document.querySelectorAll('.material-row').length");
     checks.materialStats2 = await evaluate("document.getElementById('materialStats')?.textContent || ''");
 
+    // 素材搜索
+    checks.materialCount = await evaluate("document.getElementById('materialCount')?.textContent || ''");
+    await evaluate(`(() => {
+      const s = document.getElementById('materialSearch');
+      s.value = '1002';
+      s.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await sleep(400);
+    checks.searchRows = await evaluate("document.querySelectorAll('.material-row').length");
+    checks.searchCount = await evaluate("document.getElementById('materialCount')?.textContent || ''");
+    await evaluate(`(() => {
+      const s = document.getElementById('materialSearch');
+      s.value = '';
+      s.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+
     // 切到训练页
     await evaluate("document.querySelector('.side-nav-item[data-view=\"train\"]')?.click() || document.querySelector('.flow-step[data-view=\"train\"]').click()");
     await sleep(2000);

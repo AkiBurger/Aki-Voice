@@ -1714,3 +1714,8 @@ a { color: var(--primary-text); }
 /* 折叠标题里的 chevron：展开时旋转 */
 .adv-toggle .icon { transition: transform 150ms ease; }
 .adv-toggle.open .icon { transform: rotate(180deg); }
+
+/* 素材列表工具栏 */
+.material-toolbar { display: flex; gap: var(--s2); align-items: center; margin-bottom: var(--s2); }
+.material-toolbar .data-input { min-width: 220px; flex: 0 1 280px; }
+.material-count { color: var(--fg-muted); font-size: var(--font-caption); }

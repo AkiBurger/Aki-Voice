@@ -128,6 +128,8 @@
     browseBtn: $('browseBtn'),
     browseHint: $('browseHint'),
     materialStats: $('materialStats'),
+    materialSearch: $('materialSearch'),
+    materialCount: $('materialCount'),
     materialList: $('materialList'),
     materialRefreshBtn: $('materialRefreshBtn'),
     materialClearBtn: $('materialClearBtn'),
@@ -724,15 +726,40 @@
     playAudio(url);
   }
 
+  let materialFiles = [];
+
   async function loadMaterials() {
     if (!els.materialStats) return;
     try {
       const d = await api('/api/material/list');
+      materialFiles = d.files || [];
       els.materialStats.textContent =
         d.count > 0 ? `已导入 ${d.count} 段 · 总时长约 ${d.total_min} 分钟` : '还没有导入任何素材';
-      els.materialList.innerHTML = '';
-      const shown = d.files.slice(0, 300);
-      for (const f of shown) {
+      renderMaterialList();
+    } catch (e) {
+      els.materialStats.textContent = '读取失败：' + (e.message || e);
+    }
+  }
+
+  function renderMaterialList() {
+    const query = ((els.materialSearch && els.materialSearch.value) || '').trim().toLowerCase();
+    const files = query
+      ? materialFiles.filter((f) => f.name.toLowerCase().includes(query))
+      : materialFiles;
+    els.materialList.innerHTML = '';
+    if (els.materialCount) {
+      els.materialCount.textContent = query
+        ? `匹配 ${files.length} / 共 ${materialFiles.length} 段`
+        : `共 ${materialFiles.length} 段`;
+    }
+    if (!files.length) {
+      const empty = document.createElement('div');
+      empty.className = 'eval-detail-empty';
+      empty.textContent = query ? '没有匹配的文件名' : '还没有导入任何素材';
+      els.materialList.appendChild(empty);
+      return;
+    }
+    for (const f of files) {
         const row = document.createElement('div');
         row.className = 'material-row';
         const play = document.createElement('span');
@@ -749,17 +776,8 @@
         del.className = 'btn-danger-link';
         del.textContent = '删除';
         del.addEventListener('click', () => deleteMaterial(f.name));
-        row.append(play, name, dur, del);
-        els.materialList.appendChild(row);
-      }
-      if (d.count > shown.length) {
-        const more = document.createElement('div');
-        more.className = 'eval-detail-empty';
-        more.textContent = `只显示前 ${shown.length} 条（共 ${d.count} 条）`;
-        els.materialList.appendChild(more);
-      }
-    } catch (e) {
-      els.materialStats.textContent = '读取失败：' + (e.message || e);
+      row.append(play, name, dur, del);
+      els.materialList.appendChild(row);
     }
   }
 
@@ -1701,7 +1719,7 @@
         const res = await api('/api/synthesize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: item.text, lang: state.lang, input_lang: state.inputLang, voice, tone: item.tone }),
+          body: JSON.stringify({ text: item.text, lang: state.lang, input_lang: state.inputLang, voice, tone: item.tone, seed: state.seed, temperature: state.temperature }),
         });
         if (res && res.ok && res.audio_url) {
           setIcon(status, 'check');
@@ -1901,6 +1919,7 @@
   if (els.prepareBtn) els.prepareBtn.addEventListener('click', prepareData);
   // 素材页
   if (els.materialRefreshBtn) els.materialRefreshBtn.addEventListener('click', loadMaterials);
+  if (els.materialSearch) els.materialSearch.addEventListener('input', renderMaterialList);
   if (els.materialClearBtn) els.materialClearBtn.addEventListener('click', clearMaterials);
   if (els.materialRestoreBtn) els.materialRestoreBtn.addEventListener('click', restoreMaterials);
   // 质检页
