@@ -254,18 +254,17 @@ def switch_model_if_needed(voice: str) -> None:
     try:
         set_models(f"SoVITS_weights_v2Pro/{m['file']}", f"GPT_weights_v2Pro/{_pick_gpt_file(m['epoch'])}"
                    if _pick_gpt_file(m["epoch"]) else "")
-    except EngineError:
-        pass      # 切权重失败不阻断合成，继续用当前权重
+    except EngineError as e:
+        # 切不过去就明确报错，别让用户以为用的是选中的模型
+        raise EngineError(f"切换到模型 {m.get('name') or m['file']} 失败：{e}") from e
 
 
 def find_ref_file(voice: str, tone: str = "") -> str:
     """
     找到这次合成该用的参考音频绝对路径。
 
-    安全约束：
-    - 只允许 data/ref 目录下的 wav
-    - voice 可以是文件名（setsuna_1006_0429_02）或模型 id（e2，走默认参考音频）
-    - 禁止传任意本地路径
+    只允许 data/ref 目录下的 wav；voice 可以是文件名或模型 id（走默认参考音频），
+    不接受任意本地路径。
     """
     if voice:
         # 1) 按文件名找（去掉可能的目录部分，不用用户给的路径本身）
@@ -595,10 +594,8 @@ def synthesize_text(req: SynthesizeRequest):
     """
     合成一段语音。
 
-    流程：
-      1. 如果「输入语言」≠「输出语言」，先用本地 Qwen3 翻译
-      2. 按输出语言切句
-      3. 逐句调引擎合成 -> 拼接 -> 存盘
+    输入语言和输出语言不同时先翻译，然后把整段文本交给引擎按句切分合成，
+    结果存到 outputs/<时间戳>/ 并写入历史。
     """
     raw_text = (req.text or "").strip()
     if not raw_text:
@@ -620,7 +617,10 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
     input_lang = req.input_lang if req.input_lang in ("ja", "zh", "en") else lang
 
     # 界面选的是哪个模型，就把引擎权重切过去（有 _attached 缓存，重复切换无副作用）
-    switch_model_if_needed(req.voice)
+    try:
+        switch_model_if_needed(req.voice)
+    except EngineError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     # 语气库不存在就自动生成一次（新用户第一次合成不再静默回退默认参考）
     build_tones_if_missing()
 
@@ -1177,7 +1177,10 @@ def _do_evaluate_impl():
     model_name = ms[0]["name"] if ms else "默认"
     # 用当前选中的第一个模型评测（评测的就是"现在引擎挂着的模型"）
     if ms:
-        switch_model_if_needed(ms[0]["id"])
+        try:
+            switch_model_if_needed(ms[0]["id"])
+        except EngineError as e:
+            raise HTTPException(status_code=503, detail=str(e))
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     job_dir = EVAL_DIR / stamp

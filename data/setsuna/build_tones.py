@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-生成"按语气分的参考音频库"。
+按语气生成参考音频库。
 
-做法：
-1. 读 data/setsuna/setsuna_clean.list 里的每条训练样本
-2. 用 emotion.judge_tone 给文本判语气（平静/开心/悲伤/生气/惊讶/害怕）
-3. 每种语气挑 2 条 3~7.5 秒、文本长度适中的样本，复制到 data/ref/tones/
-4. 写 tones.json（音频文件名 + 对应文本）
+读 setsuna_clean.list，用关键词规则给每条文本判语气，每种语气挑 2 条
+3~7.5 秒的样本复制到 data/ref/tones/，并写 tones.json。
 
-合成时 app.py 会按语气自动选对应参考音频，所以语气会真的改变声音。
-没有这个目录也能正常合成，只是所有语气都用默认参考音频。
+合成时 app.py 会按语气用对应参考音频；没有这个库就退回默认参考音频。
 
 用法:
     python data/setsuna/build_tones.py

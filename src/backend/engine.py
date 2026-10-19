@@ -2,16 +2,8 @@
 """
 GPT-SoVITS 引擎客户端。
 
-只做一件事：把一段文本 + 参考音频发给 9880 端口的引擎，拿回 wav 字节。
-
-引擎参数（对照 api_v2.py 实测确认）：
-- POST http://127.0.0.1:9880/tts
-- text_lang: "zh" | "ja" | "en" | "auto"（v2 语言集合，见 TTS.py v2_languages）
-- ref_audio_path: 参考音频的绝对路径（引擎在自己的进程里读文件，必须绝对路径）
-- prompt_text: 参考音频对应的文本。可留空 —— v2 模型支持无参考文本模式
-  （只有 SoVITS_V3 才强制要求 prompt_text 非空，v2 不要求）
-- streaming_mode: 0（关闭流式，一次拿回完整 wav，方便拼接）
-- 成功返回 audio/wav 字节流；失败返回 400 + JSON {"message": ..., "Exception": ...}
+把文本 + 参考音频发给 9880 端口的 /tts，拿回 wav 字节。
+参数细节见 api_v2.py；失败时引擎返回 400 + JSON。
 """
 import os
 import json

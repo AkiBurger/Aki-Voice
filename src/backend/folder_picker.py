@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-文件夹选择：因为这是本机应用，后端可以弹出 Windows 原生的"选择文件夹"对话框，
-把用户选中的路径返回给网页。
+弹出 Windows 原生文件夹选择框，把路径返回给网页。
 
-实现要点：
-- PowerShell 5.1 的 stdout 是系统 OEM/GBK 编码，中文路径按 UTF-8 解码会变乱码，
-  所以不用 stdout 传结果，而是让 PowerShell 把路径写进 UTF-8 临时文件再读。
-- 对话框用一个置顶隐藏窗体做 owner，保证出现在最前面。
+PowerShell 的 stdout 在中文系统上是 GBK，所以结果写进 UTF-8 临时文件再读，
+不走 stdout。
 """
 import os
 import subprocess

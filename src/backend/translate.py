@@ -1,13 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-翻译调度：优先用本地 Qwen（质量最好），没有就用内置小模型（零依赖）。
-
-两套引擎：
-1. 本地 Qwen（Ollama）：口语感最好，需要 Ollama 在运行
-2. 内置 opus-mt-zh-ja：300MB 小模型，跑 CPU，不需要任何外部服务
-
-用户选了"本地优先用 qwen，但不要开机自启 Ollama"，
-所以这里的策略是：Ollama 开着就用它，没开就自动用内置模型，用户完全无感。
+翻译调度：优先用本地 Ollama（质量更好），连不上就用内置 opus-mt 模型。
 """
 import os
 import re
