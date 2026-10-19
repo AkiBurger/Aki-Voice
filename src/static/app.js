@@ -209,8 +209,9 @@
       loadTrainData();
       refreshTrainStatus();
       updateDataStatus();
+      resumeDataJob();
     }
-    if (name === 'material') { loadMaterials(); updateDataStatus(); }
+    if (name === 'material') { loadMaterials(); updateDataStatus(); resumeDataJob(); }
     if (name === 'qc') { loadQcReport(); }
     if (name === 'annotation') { loadAnnotations(); }
     if (name === 'eval') {
@@ -822,7 +823,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ batch: '' }),
       });
-      showToast('已从回收站恢复 ' + res.restored + ' 段素材');
+      const extra = res.skipped ? `，跳过 ${res.skipped} 段（同名文件已存在）` : '';
+      showToast('已恢复 ' + res.restored + ' 段素材' + extra);
       loadMaterials();
       updateDataStatus();
     } catch (e) {
@@ -1155,6 +1157,20 @@
     }
   }
 
+  function setDataJobBusy(busy) {
+    if (els.importBtn) els.importBtn.disabled = busy;
+    if (els.prepareBtn) els.prepareBtn.disabled = busy;
+    if (els.scanBtn) els.scanBtn.disabled = busy;
+  }
+
+  // 页面刷新/切页后如果任务还在跑，自动接上进度
+  async function resumeDataJob() {
+    try {
+      const j = await api('/api/data/job');
+      if (j && j.running) pollDataJob();
+    } catch (e) { /* 忽略 */ }
+  }
+
   async function pollDataJob() {
     if (dataJobTimer) clearTimeout(dataJobTimer);
     try {
@@ -1169,11 +1185,11 @@
           els.dataJobLog.scrollTop = els.dataJobLog.scrollHeight;
         }
       }
+      setDataJobBusy(j.running);
       if (j.running) {
         dataJobTimer = setTimeout(pollDataJob, 2000);
       } else {
-        els.importBtn.disabled = false;
-        els.prepareBtn.disabled = false;
+        setDataJobBusy(false);
         updateDataStatus();
         loadTrainData();
         if (state.view === 'material') loadMaterials();
@@ -1204,13 +1220,20 @@
     return m > 0 ? `${m} 分 ${s} 秒` : `${s} 秒`;
   }
 
+  let trainStoppedByUser = false;
+
   async function refreshTrainStatus() {
     if (!els.trainBadge) return;
     try {
       const st = await api('/api/train/status');
       const running = st.running;
-      els.trainBadge.textContent = running ? '训练中' : (st.success === true ? '已完成' : (st.success === false ? '失败/已停' : '空闲'));
-      els.trainBadge.className = 'badge ' + (running ? 'badge-warn' : (st.success === true ? 'badge-ok' : (st.success === false ? 'badge-danger' : 'badge-neutral')));
+      const stopped = !running && st.success === false && trainStoppedByUser;
+      els.trainBadge.textContent = running
+        ? '训练中'
+        : stopped
+          ? '已停止'
+          : (st.success === true ? '已完成' : (st.success === false ? '失败/已停' : '空闲'));
+      els.trainBadge.className = 'badge ' + (running ? 'badge-warn' : (st.success === true ? 'badge-ok' : (st.success === false && !stopped ? 'badge-danger' : 'badge-neutral')));
       els.trainStartBtn.disabled = running || !state.engineUp || !state.dataReady;
       els.trainStopBtn.classList.toggle('hidden', !running);
       els.trainProgress.classList.toggle('hidden', !running && st.stage_index < 0 && !st.log_path);
@@ -1257,6 +1280,7 @@
     );
     if (!ok) return;
     els.trainStartBtn.disabled = true;
+    trainStoppedByUser = false;
     try {
       await api('/api/train/start', {
         method: 'POST',
@@ -1282,6 +1306,7 @@
     const ok = window.confirm('确定停止训练？已经训练的阶段会保留，但这次不会产出完整模型。');
     if (!ok) return;
     try {
+      trainStoppedByUser = true;
       await api('/api/train/stop', { method: 'POST' });
       await refreshTrainStatus();
     } catch (e) {
@@ -1857,6 +1882,14 @@
         if (els.downloadLink && (els.downloadLink.getAttribute('href') || '').endsWith(item.audio_url || '\u0000')) {
           resetResultArea();
         }
+        // A/B 里可能有一侧指向刚删掉的文件，按最新历史过滤
+        try {
+          const resp = await api('/api/history');
+          const list = Array.isArray(resp) ? resp : (resp && Array.isArray(resp.history) ? resp.history : []);
+          const urls = new Set(list.map((x) => x.audio_url));
+          state.abResults = state.abResults.filter((r) => urls.has(r.audio_url));
+          renderAB();
+        } catch (e) { /* 历史拿不到就保持原状 */ }
         if (!els.historyList.querySelector('.history-item')) els.historyEmpty.hidden = false;
         if (els.clearHistoryBtn && !els.historyList.querySelector('.history-item')) els.clearHistoryBtn.hidden = true;
       } catch (err) {
