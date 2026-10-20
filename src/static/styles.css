@@ -478,6 +478,15 @@ body:not([data-view="synth"]) .custom-char { display: none; }
 }
 .tutorial-close:hover { color: var(--danger); border-color: var(--danger); }
 .tutorial-body { padding: 10px 12px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.tutorial-hint {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px dashed var(--line-strong);
+  background: rgba(255, 255, 255, .55);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
 
 .tutorial-step {
   display: flex;

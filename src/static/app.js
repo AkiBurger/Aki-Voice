@@ -556,14 +556,17 @@
   }
 
   // ---------- 左下角教程 ----------
+  // 与左侧菜单 01~06 同序；首次使用按下方推荐流程走
   const TUTORIAL_STEPS = [
-    { id: 'import', title: '导入素材', view: 'material', desc: '选一个装着人声的文件夹，扫描后导入。' },
-    { id: 'clean', title: '识别与清洗', view: 'material', desc: '把音频转成文字并做基本清洗，这一步是训练的前提。' },
-    { id: 'annotate', title: '核对标注', view: 'annotation', desc: '听一遍识别出来的文本，把错字改掉，训练用的就是改后的文本。' },
-    { id: 'train', title: '训练模型', view: 'train', desc: '用清洗好的素材训练音色，练完会自动挂到合成页。' },
-    { id: 'eval', title: '评测打分', view: 'eval', desc: '跑一次评测，看声纹相似度分数判断像不像本人。' },
-    { id: 'synth', title: '合成试听', view: 'synth', desc: '选音色和语气，写台词，点合成。' },
+    { id: 'synth', title: '合成', view: 'synth', desc: '写台词、选语气，点合成。平时主要用这一页。' },
+    { id: 'material', title: '素材', view: 'material', desc: '导入人声，识别并清洗。第一次做声音从这页开始。' },
+    { id: 'qc', title: '质检', view: 'qc', desc: '检查清洗结果，把有问题的片段挑出来。' },
+    { id: 'annotate', title: '标注', view: 'annotation', desc: '核对识别出的文本，改掉错字；训练用的就是改后的文本。' },
+    { id: 'train', title: '训练', view: 'train', desc: '用清洗好的素材训练音色，练完自动挂到合成页。' },
+    { id: 'eval', title: '评测', view: 'eval', desc: '跑测试句，看声纹相似度分数判断像不像。' },
   ];
+  const TUTORIAL_FLOW = ['material', 'qc', 'annotate', 'train', 'eval', 'synth'];
+  const TUTORIAL_HINT = '从零开始：02 素材 → 03 质检 → 04 标注 → 05 训练 → 06 评测，最后回 01 合成。';
 
   async function refreshTutorialData() {
     try {
@@ -593,27 +596,20 @@
 
   function tutorialDone(stepId) {
     const d = state.tutorialData;
-    // 每一步只在前置步骤都完成后才算完成，避免有旧模型时前半段被跳过
-    const base = {
-      import: d.wav > 0,
-      clean: d.clean > 0,
-      annotate: d.clean > 0,
-      train: d.clean > 0 && d.models > 0,
-      eval: d.models > 0 && d.evals > 0,
-      synth: d.history > 0,
-    };
-    let prevDone = true;
-    for (const s of TUTORIAL_STEPS) {
-      const ok = Boolean(base[s.id]);
-      if (s.id === stepId) return prevDone && ok;
-      prevDone = prevDone && ok;
+    switch (stepId) {
+      case 'material': return d.wav > 0 && d.clean > 0;
+      case 'qc': return d.clean > 0;
+      case 'annotate': return d.clean > 0;
+      case 'train': return d.models > 0;
+      case 'eval': return d.evals > 0;
+      case 'synth': return d.history > 0;
+      default: return false;
     }
-    return false;
   }
 
   function currentTutorialStep() {
-    for (const s of TUTORIAL_STEPS) {
-      if (!tutorialDone(s.id)) return s.id;
+    for (const id of TUTORIAL_FLOW) {
+      if (!tutorialDone(id)) return id;
     }
     return 'synth';
   }
@@ -622,6 +618,10 @@
     if (!els.tutorialBody) return;
     const current = currentTutorialStep();
     els.tutorialBody.innerHTML = '';
+    const hint = document.createElement('div');
+    hint.className = 'tutorial-hint';
+    hint.textContent = TUTORIAL_HINT;
+    els.tutorialBody.appendChild(hint);
     TUTORIAL_STEPS.forEach((s, i) => {
       const done = tutorialDone(s.id);
       const isCurrent = s.id === current;
