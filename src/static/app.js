@@ -149,6 +149,7 @@
     // 质检页
     qcRunBtn: $('qcRunBtn'),
     qcClearBtn: $('qcClearBtn'),
+    qcDeleteFailBtn: $('qcDeleteFailBtn'),
     qcSummary: $('qcSummary'),
     qcFilter: $('qcFilter'),
     qcList: $('qcList'),
@@ -1765,9 +1766,7 @@
   function renderQcReport(r) {
     qcLastReport = r;
     const s = r.summary || {};
-    els.qcSummary.textContent =
-      `共 ${s.total || 0} 段：通过 ${s.pass || 0} · 警告 ${s.warn || 0} · 不合格 ${s.fail || 0}` +
-      (r.duplicate_texts ? ` · 重复文本 ${r.duplicate_texts} 句` : '');
+    refreshQcSummary();
     if (els.qcFilter) els.qcFilter.hidden = false;
     renderQcList(state.qcFilter || 'all');
   }
@@ -1808,9 +1807,73 @@
       const reason = document.createElement('span');
       reason.className = 'qc-reason';
       reason.textContent = (it.reasons || []).join('；') || '—';
-      row.append(play, lv, name, reason);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'qc-del';
+      del.setAttribute('aria-label', '删除这段素材');
+      del.title = '删除这段素材';
+      setIcon(del, 'trash-2');
+      del.addEventListener('click', () => removeQcItems([it.name]));
+      row.append(play, lv, name, reason, del);
       els.qcList.appendChild(row);
     }
+  }
+
+  function refreshQcSummary() {
+    if (!els.qcSummary) return;
+    const s = (qcLastReport && qcLastReport.summary) || {};
+    els.qcSummary.textContent =
+      `共 ${s.total || 0} 段：通过 ${s.pass || 0} · 警告 ${s.warn || 0} · 不合格 ${s.fail || 0}` +
+      (qcLastReport && qcLastReport.duplicate_texts ? ` · 重复文本 ${qcLastReport.duplicate_texts} 句` : '');
+    if (els.qcDeleteFailBtn) els.qcDeleteFailBtn.disabled = (s.fail || 0) === 0;
+  }
+
+  async function removeQcItems(names) {
+    if (!names || !names.length) {
+      showToast('没有可删除的素材');
+      return;
+    }
+    const ok = await askConfirm(
+      `删除这 ${names.length} 段素材？`,
+      '素材会移到回收站，可以到素材页点「恢复删除」找回。',
+      '删除'
+    );
+    if (!ok) return;
+    let done = 0;
+    for (const name of names) {
+      try {
+        await api('/api/material/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        done += 1;
+        if (qcLastReport && Array.isArray(qcLastReport.items)) {
+          qcLastReport.items = qcLastReport.items.filter((it) => it.name !== name);
+        }
+      } catch (e) {
+        /* 单条失败跳过 */
+      }
+    }
+    if (qcLastReport) {
+      const items = qcLastReport.items || [];
+      qcLastReport.summary = {
+        total: items.length,
+        pass: items.filter((it) => it.level === 'pass').length,
+        warn: items.filter((it) => it.level === 'warn').length,
+        fail: items.filter((it) => it.level === 'fail').length,
+      };
+    }
+    refreshQcSummary();
+    renderQcList(state.qcFilter || 'all');
+    showToast(done ? `已删除 ${done} 段素材` : '删除失败，刷新后再试');
+  }
+
+  function deleteQcFailItems() {
+    const fails = ((qcLastReport && qcLastReport.items) || [])
+      .filter((it) => it.level === 'fail')
+      .map((it) => it.name);
+    removeQcItems(fails);
   }
 
   // ---------- 标注页 ----------
@@ -3205,6 +3268,7 @@
   // 质检页
   if (els.qcRunBtn) els.qcRunBtn.addEventListener('click', runQc);
   if (els.qcClearBtn) els.qcClearBtn.addEventListener('click', () => clearQcResult(false));
+  if (els.qcDeleteFailBtn) els.qcDeleteFailBtn.addEventListener('click', deleteQcFailItems);
   if (els.annClearBtn) els.annClearBtn.addEventListener('click', () => clearAnnResult(false));
   if (els.qcFilter) {
     els.qcFilter.querySelectorAll('.filter-btn').forEach((b) => {

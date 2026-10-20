@@ -1878,6 +1878,20 @@ body.is-transitioning #view-eval .eval-details {
 .qc-name { width: 150px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qc-reason { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
 .qc-summary { margin-bottom: 6px; color: var(--ink-soft); font-size: 10.5px; line-height: 1.55; }
+.qc-del {
+  flex-shrink: 0;
+  width: 26px; height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.qc-del:hover { color: var(--danger); border-color: rgba(214, 58, 74, .3); background: rgba(214, 58, 74, .08); }
+.qc-del .icon { width: 13px; height: 13px; }
 .ann-row { min-height: 40px; padding: 3px 9px; }
 .ann-meta { width: 160px; flex-shrink: 0; color: var(--ink-faint); font-family: var(--font-mono); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ann-input {

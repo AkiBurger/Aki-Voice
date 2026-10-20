@@ -1301,13 +1301,47 @@ def material_audio(name: str):
 
 @app.post("/api/material/delete")
 def material_delete(req: MaterialDeleteRequest):
-    """删除素材（按名字或全部）。"""
+    """删除素材（按名字或全部）。质检报告里对应的条目也一起清掉。"""
     try:
-        return data_prep.delete_materials(req.name, req.all)
+        result = data_prep.delete_materials(req.name, req.all)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    try:
+        _prune_qc_report(req.name, req.all)
+    except Exception:
+        pass
+    return result
+
+
+def _prune_qc_report(name: str, delete_all: bool) -> None:
+    """素材被删后，把质检报告里的同名条目去掉并重算汇总。"""
+    import json as _json
+
+    if not qc.REPORT_FILE.exists():
+        return
+    if delete_all:
+        qc.REPORT_FILE.unlink()
+        return
+    if not name:
+        return
+    report = qc.load_report()
+    items = report.get("items") or []
+    kept = [it for it in items if it.get("name") != name]
+    if len(kept) == len(items):
+        return
+    report["items"] = kept
+    summary = report.get("summary") or {}
+    counts = {"pass": 0, "warn": 0, "fail": 0}
+    for it in kept:
+        lv = it.get("level")
+        if lv in counts:
+            counts[lv] += 1
+    summary["total"] = len(kept)
+    summary.update(counts)
+    report["summary"] = summary
+    qc.REPORT_FILE.write_text(_json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 @app.post("/api/qc/run")
