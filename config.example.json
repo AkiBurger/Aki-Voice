@@ -21,7 +21,7 @@
     "_当前接入状态": "v0.2 实际行为：引擎地址默认 127.0.0.1:9880，可用环境变量 ABV_ENGINE_URL 覆盖；Ollama 地址可用 ABV_OLLAMA_URL、模型名可用 ABV_OLLAMA_MODEL；SoVITS 根目录可用 ABV_SOVITS_ROOT（目前仅 evaluate.py 读取，其它模块按 D:\\Dev\\ai 自动探测）；ffmpeg 目录、HF 缓存目录、内置翻译模型目录目前在代码里按作者机器的路径写死。backend.*、tts.*、output_dir、data_dir 以及 paths.* 属于预留配置项，当前版本尚未被代码读取，修改它们不会改变运行行为。"
   },
   "app_name": "AkiBurger Voice",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "engine": {
     "api_url": "http://127.0.0.1:9880",
     "health_path": "/docs",
