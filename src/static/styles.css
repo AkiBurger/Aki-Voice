@@ -1634,6 +1634,7 @@ body.compact-ui .backlog-body .history-list { max-height: none; }
 .voice-card .field-label { margin-top: 8px; }
 .voice-card .field-label:first-child { margin-top: 0; }
 .model-actions { display: flex; gap: 6px; margin-top: 7px; }
+.model-actions-sub { margin-top: 4px; }
 .model-actions .btn-secondary { flex: 1 1 0; }
 .model-audio { width: 100%; margin-top: 6px; }
 
@@ -2315,3 +2316,15 @@ body.no-char .custom-char { display: none; }
   *::before,
   *::after { transition-duration: 1ms !important; }
 }
+
+.model-manage-list { display: flex; flex-direction: column; gap: 4px; }
+.model-manage-row {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 34px; padding: 4px 8px;
+  border-radius: 10px; border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .7);
+}
+.model-manage-name { flex: 1 1 auto; min-width: 0; font-size: 11.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-manage-epoch { margin-left: 6px; font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-faint); }
+.model-manage-active { flex-shrink: 0; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--primary-soft); color: var(--primary-deep); }
+.model-manage-row .btn-danger-link { flex-shrink: 0; height: 24px; }

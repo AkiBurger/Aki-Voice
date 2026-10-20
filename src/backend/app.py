@@ -737,6 +737,31 @@ class RenameModelRequest(BaseModel):
     name: str = ""     # 新名字；留空 = 恢复默认 eN
 
 
+class DeleteModelRequest(BaseModel):
+    file: str          # 要删除的 SoVITS 权重文件名
+
+
+@app.post("/api/models/delete")
+def delete_model(req: DeleteModelRequest):
+    """删掉一个不用的模型（权重移到 data/_model_trash，可手动找回）。当前启用的不能删。"""
+    name = Path(req.file).name
+    if not name.lower().endswith(".pth"):
+        name += ".pth"
+    if SOVITS_WEIGHTS_DIR is None or not (SOVITS_WEIGHTS_DIR / name).exists():
+        raise HTTPException(status_code=404, detail=f"找不到这个模型文件：{name}")
+    reg = _load_models_registry()
+    if reg["active"] and reg["active"] == name:
+        raise HTTPException(status_code=400, detail="当前启用的模型不能删，先在音色里切到别的模型")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    trash = DATA_DIR / "_model_trash" / stamp
+    trash.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(SOVITS_WEIGHTS_DIR / name), str(trash / name))
+    names = dict(reg["names"])
+    names.pop(name, None)
+    _save_models_registry(names, reg["active"])
+    return {"ok": True, "file": name, "moved_to": str(trash / name)}
+
+
 @app.post("/api/models/rename")
 def rename_model(req: RenameModelRequest):
     """

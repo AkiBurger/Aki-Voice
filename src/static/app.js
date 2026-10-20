@@ -67,6 +67,7 @@
     retryBtn: $('retryBtn'),
     previewBtn: $('previewBtn'),
     renameModelBtn: $('renameModelBtn'),
+    modelManageList: $('modelManageList'),
     refSelect: $('refSelect'),
     refHint: $('refHint'),
     langBtns: [...document.querySelectorAll('.lang-btn')],
@@ -744,6 +745,7 @@
       // 打开设置时刷新音色名与空间占用
       applyVoiceName(state.voiceName);
       loadMaintenance();
+      renderModelManageList();
     }
     syncDrawerScrim();
   }
@@ -1181,6 +1183,70 @@
     els.currentModelLine.textContent = '当前使用：' + label + (ep !== '' && !sameAsEpoch ? '（e' + ep + '）' : '');
   }
 
+  function renderModelManageList() {
+    if (!els.modelManageList) return;
+    const list = state.models || [];
+    els.modelManageList.innerHTML = '';
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'settings-note';
+      empty.textContent = '还没有训练好的模型。';
+      els.modelManageList.appendChild(empty);
+      return;
+    }
+    const activeFile = state.activeModel ? String(state.activeModel.file || state.activeModel.id || '') : '';
+    for (const m of list) {
+      const file = String(m.file || m.id || '');
+      const isActive = !!activeFile && file === activeFile;
+      const row = document.createElement('div');
+      row.className = 'model-manage-row';
+      const name = document.createElement('span');
+      name.className = 'model-manage-name';
+      const labelText = (modelLabel(m) || ('e' + modelEpoch(m)) || file);
+      name.textContent = labelText;
+      const epText = m.epoch != null ? ('e' + m.epoch) : '';
+      if (epText && !labelText.includes(epText)) {
+        const ep = document.createElement('span');
+        ep.className = 'model-manage-epoch';
+        ep.textContent = epText;
+        name.appendChild(ep);
+      }
+      row.appendChild(name);
+      if (isActive) {
+        const badge = document.createElement('span');
+        badge.className = 'model-manage-active';
+        badge.textContent = '当前使用';
+        row.appendChild(badge);
+      }
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn-danger-link';
+      del.textContent = '删除';
+      del.disabled = isActive || !!state.activating;
+      del.title = isActive ? '当前启用的模型不能删，先切到别的模型' : '删除这个模型（移到 data/_model_trash）';
+      del.addEventListener('click', () => deleteModelByFile(file, modelLabel(m) || file));
+      row.appendChild(del);
+      els.modelManageList.appendChild(row);
+    }
+  }
+
+  async function deleteModelByFile(file, label) {
+    if (!file) return;
+    const ok = await askConfirm('删除模型「' + (label || file) + '」？', '权重会移到 data/_model_trash，确认不再需要再删。当前启用的模型不能删。', '删除');
+    if (!ok) return;
+    try {
+      await api('/api/models/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: file }),
+      });
+      showToast('已删除模型：' + (label || file), 2600);
+      await loadVoices();
+    } catch (e) {
+      showError('删除失败', String((e && e.message) || e));
+    }
+  }
+
   async function loadVoices() {
     try {
       const resp = await api('/api/models');
@@ -1204,6 +1270,7 @@
         applyVoiceName(voiceName);
         updateModelBadges();
         updateCurrentModelLine();
+        renderModelManageList();
         return;
       }
       // 每个模型一个 option：value = file（激活用），label 优先自定义名
@@ -1237,6 +1304,7 @@
       applyVoiceName(voiceName);
       updateModelBadges();
       updateCurrentModelLine();
+      renderModelManageList();
     } catch (e) {
       // 音色接口失败不致命，保留"加载中"并提示
       els.voiceSelect.innerHTML = '<option value="">加载失败，点合成时请检查后端</option>';
