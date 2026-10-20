@@ -1332,7 +1332,8 @@
       let any = false;
       rows.forEach((row) => {
         const target = row.dataset.target;
-        const info = (d && d[target]) || {};
+        // 后端把项目日志放在 outputs.logs 里返回
+        const info = (d && (target === 'logs' ? (d.outputs && d.outputs.logs) : d[target])) || {};
         const sizeEl = row.querySelector('.maint-size');
         if (sizeEl) sizeEl.textContent = fmtBytes(info.bytes) + (info.count ? ' · ' + info.count + ' 个' : '');
         const has = info && info.bytes > 0;
@@ -3407,6 +3408,8 @@
     document.addEventListener('click', (e) => {
       if (!els.settingsPanel || els.settingsPanel.classList.contains('hidden')) return;
       if (els.settingsPanel.contains(e.target) || els.settingsBtn.contains(e.target)) return;
+      // 确认弹窗 / 提示条上的点击不算"点外面"，否则清理空间、改音色名会顺手关掉设置
+      if (e.target.closest && e.target.closest('.mini-modal-scrim, .toast, .toast-wrap')) return;
       openSettings(false);
     });
     document.addEventListener('keydown', (e) => {

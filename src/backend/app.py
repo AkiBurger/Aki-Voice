@@ -875,7 +875,13 @@ def maintenance():
     """垃圾统计：回收站 / 旧训练产物（可清理合计）/ 合成历史 / 项目日志。"""
     trash_b, trash_c = _dir_size(DATA_DIR / "_trash")
     clean = _train_logs_cleanables()
-    out_b, out_c = _dir_size(OUTPUT_DIR)
+    out_b, out_c = 0, 0
+    if OUTPUT_DIR.exists():
+        for item in OUTPUT_DIR.iterdir():
+            if item.is_dir() and not item.name.startswith("_"):
+                sz, cnt = _dir_size(item)
+                out_b += sz
+                out_c += cnt
     log_b, log_c = _dir_size(PROJECT_ROOT / "logs")
     return {
         "trash": {"bytes": trash_b, "count": trash_c},
@@ -924,10 +930,10 @@ def maintenance_clean(req: CleanRequest):
             shutil.rmtree(base / sub, ignore_errors=True)
             freed += sz
     elif t == "outputs":
-        # 只删真正的合成记录（有 meta.json），保留 _eval/_compare
+        # 删掉所有合成记录目录（20261020_xxxxxx 这类），保留 _eval / _compare 等下划线目录
         if OUTPUT_DIR.exists():
             for job_dir in list(OUTPUT_DIR.iterdir()):
-                if job_dir.is_dir() and (job_dir / "meta.json").exists():
+                if job_dir.is_dir() and not job_dir.name.startswith("_"):
                     sz, _ = _dir_size(job_dir)
                     shutil.rmtree(job_dir, ignore_errors=True)
                     freed += sz
