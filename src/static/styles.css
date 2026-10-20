@@ -498,7 +498,6 @@ body:not([data-view="synth"]) .custom-char { display: none; }
   background: rgba(255, 255, 255, .7);
 }
 .tutorial-step.is-current { border-color: var(--primary); background: var(--primary-soft); }
-.tutorial-step.is-done { opacity: .72; }
 .t-step-num {
   flex-shrink: 0;
   width: 22px; height: 22px;
@@ -513,12 +512,10 @@ body:not([data-view="synth"]) .custom-char { display: none; }
   font-weight: 700;
 }
 .tutorial-step.is-current .t-step-num { background: var(--primary); border-color: var(--primary); color: #fff; }
-.tutorial-step.is-done .t-step-num { background: var(--ok); border-color: var(--ok); color: #fff; }
 .t-step-body { flex: 1 1 auto; min-width: 0; }
 .t-step-title { font-size: 12px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .t-step-mark { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: var(--radius-pill); }
 .tutorial-step.is-current .t-step-mark { background: var(--primary); color: #fff; }
-.tutorial-step.is-done .t-step-mark { background: rgba(31, 168, 108, .14); color: var(--ok); }
 .t-step-desc { font-size: 10.5px; color: var(--ink-soft); line-height: 1.5; margin-top: 2px; }
 .t-step-go {
   flex-shrink: 0;

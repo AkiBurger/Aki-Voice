@@ -623,10 +623,9 @@
     hint.textContent = TUTORIAL_HINT;
     els.tutorialBody.appendChild(hint);
     TUTORIAL_STEPS.forEach((s, i) => {
-      const done = tutorialDone(s.id);
       const isCurrent = s.id === current;
       const row = document.createElement('div');
-      row.className = 'tutorial-step' + (isCurrent ? ' is-current' : '') + (done && !isCurrent ? ' is-done' : '');
+      row.className = 'tutorial-step' + (isCurrent ? ' is-current' : '');
 
       const num = document.createElement('span');
       num.className = 't-step-num';
@@ -639,10 +638,12 @@
       const titleText = document.createElement('span');
       titleText.textContent = s.title;
       title.appendChild(titleText);
-      const mark = document.createElement('span');
-      mark.className = 't-step-mark';
-      mark.textContent = isCurrent ? '你现在在这里' : (done ? '已完成' : '');
-      if (mark.textContent) title.appendChild(mark);
+      if (isCurrent) {
+        const mark = document.createElement('span');
+        mark.className = 't-step-mark';
+        mark.textContent = '你现在在这里';
+        title.appendChild(mark);
+      }
       const desc = document.createElement('div');
       desc.className = 't-step-desc';
       desc.textContent = s.desc;
