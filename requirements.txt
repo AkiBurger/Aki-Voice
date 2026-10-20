@@ -1,6 +1,6 @@
 # ============================================================
 #  AkiBurger Voice · 后端依赖
-#  Python >= 3.10（作者实测 3.13.15；GPT-SoVITS 官方建议 3.10 ~ 3.11）
+#  Python >= 3.10（GPT-SoVITS 官方建议 3.10 ~ 3.11）
 #
 #  安装：
 #      pip install -r requirements.txt
@@ -50,4 +50,4 @@ pyyaml>=6.0
 # 可选模型 qwen3（中→日翻译质量更好）。不装也能用内置 opus-mt 中→日小模型。
 #
 # 训练素材识别用的 funasr 也不在这里：它跑在 GPT-SoVITS 的 venv 里
-# （data/setsuna/batch_asr.py 由该 venv 的 python 执行），随 GPT-SoVITS 安装。
+# （data/voice/batch_asr.py 由该 venv 的 python 执行），随 GPT-SoVITS 安装。

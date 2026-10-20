@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
-"""
-按语气生成参考音频库。
+"""按语气生成参考音频库。
 
-读 setsuna_clean.list，用关键词规则给每条文本判语气，每种语气挑 2 条
+读清洗后的清单，用关键词规则给每条文本判语气，每种语气挑 2 条
 3~7.5 秒的样本复制到 data/ref/tones/，并写 tones.json。
 
-合成时 app.py 会按语气用对应参考音频；没有这个库就退回默认参考音频。
+合成时 app.py 会按语气挑对应参考音频；没有这个库就退回默认参考音频。
 
 用法:
-    python data/setsuna/build_tones.py
+    python data/voice/build_tones.py
 """
 import json
 import shutil
@@ -20,8 +19,9 @@ sys.path.insert(0, str(ROOT / "src" / "backend"))
 
 from emotion import TONES, judge_tone  # noqa: E402
 
-WAV_DIR = ROOT / "data" / "setsuna" / "wav"
-CLEAN_LIST = ROOT / "data" / "setsuna" / "setsuna_clean.list"
+DATA = Path(__file__).resolve().parent
+WAV_DIR = DATA / "wav"
+CLEAN_LIST = DATA / f"{DATA.name}_clean.list"
 OUT_DIR = ROOT / "data" / "ref" / "tones"
 
 MIN_DUR, MAX_DUR = 3.0, 7.5

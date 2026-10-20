@@ -1,3 +1,4 @@
+/* abv-provenance: ABV-2026-1020-AKIBURGER-01 | AkiBurger Voice | MIT */
 /* ============================================================
    AkiBurger Voice · 合成台 前端逻辑
    后端接口约定（详见 README）：
@@ -188,7 +189,7 @@
     evalDetails: $('evalDetails'),
     evalHistory: $('evalHistory'),
     evalHistoryEmpty: $('evalHistoryEmpty'),
-    // v4 游戏主界面 / galgame 外壳
+    // 游戏主界面 / galgame 外壳
     sceneA: $('sceneA'),
     sceneB: $('sceneB'),
     settingsBtn: $('settingsBtn'),
@@ -3068,7 +3069,7 @@
   let batchStopped = false;
   let batchAbort = null;
 
-  // 后端合成状态（task-24 提供 /api/synth/status；暂时 404 时用保守等待兜底）
+  // 后端合成状态（/api/synth/status；接口不可用时保守等待兜底）
   async function waitSynthIdle(timeoutMs) {
     const limit = timeoutMs || 120000;
     const t0 = Date.now();
@@ -3467,7 +3468,7 @@
   if (abB) abB.addEventListener('click', () => playAB('B'));
   renderAB();
 
-  // ---------- v4 外壳：设置 / 声の設定折叠 / BACKLOG 抽屉 ----------
+  // ---------- 设置 / 声の設定折叠 / BACKLOG 抽屉 ----------
   if (els.settingsBtn) {
     els.settingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();

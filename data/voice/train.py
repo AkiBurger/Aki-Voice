@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-雪菜轻量版训练脚本（v2Pro）。
+轻量版训练脚本（v2Pro）。
 
 一条龙做完：
   1. 数据集制作：文字特征 → hubert特征 → 音色特征 → 语义token
   2. SoVITS 微调（学音色）
   3. GPT 微调（学韵律）
 
-参数按 8GB 显存压低（batch 小、轮数少、开梯度检查点），
-目标是"轻量、能跑通、跑得快"，不追求极致效果。
+参数按 8GB 显存压低（batch 小、轮数少、开梯度检查点）。
 """
 import hashlib
 import json
@@ -25,24 +24,36 @@ import yaml
 sys.stdout.reconfigure(encoding="utf-8")
 
 # ---------- 路径 ----------
-SOVITS_ROOT = Path(r"D:\Dev\ai\02_GPT-SoVITS_配音\GPT-SoVITS")
+def _resolve_sovits_root() -> Path:
+    env = os.environ.get("ABV_SOVITS_ROOT", "").strip()
+    if env:
+        return Path(env)
+    project = Path(__file__).resolve().parents[2]
+    ai = Path(os.environ.get("ABV_AI_ROOT", str(project.parent.parent / "ai")))
+    if ai.exists():
+        for item in sorted(ai.glob("*GPT-SoVITS*")):
+            if (item / "GPT-SoVITS" / "api_v2.py").exists():
+                return item / "GPT-SoVITS"
+    return ai / "GPT-SoVITS"
+
+SOVITS_ROOT = _resolve_sovits_root()
 PY = sys.executable
-DATA = Path(r"D:\Dev\projects\voice-studio\data\setsuna")
-LIST = DATA / "setsuna.list"
+DATA = Path(__file__).resolve().parent
+LIST = DATA / f"{DATA.name}.list"
 WAV_DIR = DATA / "wav"
 
-EXP = "setsuna_light"          # 实验名，产物在 logs/setsuna_light
+EXP = os.environ.get("ABV_EXP_NAME", "voice_light")   # 实验名，产物在 logs/<EXP>
 VERSION = "v2Pro"
 OPT_DIR = SOVITS_ROOT / "logs" / EXP
 
 # 用清洗后的数据（剔除病态识别文本，见 clean_data.py）
-CLEAN_LIST = DATA / "setsuna_clean.list"
+CLEAN_LIST = DATA / f"{DATA.name}_clean.list"
 
 # 预处理版本戳：记录 clean.list 与 wav 列表的指纹，
 # 素材一变就重算受影响的特征，不再"只看文件存不存在"
 PREP_STAMP = DATA / ".prep_stamp.json"
 
-# 从零训练开关（修复"二次训练秒完成"）：
+# 从零训练开关：
 # 默认 1。=1 时训练前把旧的 s1/s2 训练产物移进备份目录，从预训练底模开始。
 # 想续训就设 ABV_FROM_SCRATCH=0。
 FROM_SCRATCH = os.environ.get("ABV_FROM_SCRATCH", "1") == "1"
@@ -425,7 +436,7 @@ def train_gpt():
 
 def main():
     t_all = time.time()
-    print(f"雪菜轻量版训练开始\n  数据: {LIST}\n  样本: 见下方\n  实验名: {EXP}\n  版本: {VERSION}")
+    print(f"训练开始\n  数据: {LIST}\n  样本: 见下方\n  实验名: {EXP}\n  版本: {VERSION}")
     prep_dataset()
     merge_parts()
     train_sovits()

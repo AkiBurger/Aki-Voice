@@ -171,5 +171,6 @@ check("引擎可用性", _engine_weights)
 
 lines.append("")
 lines.append(f"结果：通过 {ok_count} 项，失败 {fail_count} 项")
-open(r"D:\Dev\projects\voice-studio\data\_selftest.txt", "w", encoding="utf-8").write("\n".join(lines))
+from pathlib import Path as _Path
+open(_Path(__file__).resolve().parents[2] / "data" / "_selftest.txt", "w", encoding="utf-8").write("\n".join(lines))
 print(f"通过 {ok_count} / 失败 {fail_count}")

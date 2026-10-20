@@ -13,12 +13,12 @@
     "tts.default_text_lang": "默认输出语言：zh | ja | en。",
     "tts.split_max_chars": "长文本切句的单块字数上限。注意：当前 text_split.py 内置默认 45，本项为预留配置。",
     "tts.media_type": "输出音频格式；引擎固定 wav。",
-    "paths.sovits_root": "GPT-SoVITS 源码目录（包含 api_v2.py 的那一层）。留空 = 自动在 D:\\Dev\\ai\\02_GPT-SoVITS_* 下探测。",
+    "paths.sovits_root": "GPT-SoVITS 源码目录（包含 api_v2.py 的那一层）。留空 = 自动探测项目上两级目录下的 GPT-SoVITS。",
     "paths.ffmpeg_dir": "ffmpeg.exe 所在目录（导入素材时转 16k 单声道 wav 用）。",
     "paths.hf_cache": "HuggingFace 模型缓存目录（内置翻译模型、识别模型都放这里）。",
     "paths.ollama_url": "本地 Ollama 地址。不启动 Ollama 也能用，会自动回退到内置翻译模型。",
     "paths.builtin_translate_model": "内置中→日翻译模型在 HF 缓存里的目录名（代码里固定为 models--shun89--opus-mt-zh-ja）。",
-    "_当前接入状态": "v0.2 实际行为：引擎地址默认 127.0.0.1:9880，可用环境变量 ABV_ENGINE_URL 覆盖；Ollama 地址可用 ABV_OLLAMA_URL、模型名可用 ABV_OLLAMA_MODEL；SoVITS 根目录可用 ABV_SOVITS_ROOT（目前仅 evaluate.py 读取，其它模块按 D:\\Dev\\ai 自动探测）；ffmpeg 目录、HF 缓存目录、内置翻译模型目录目前在代码里按作者机器的路径写死。backend.*、tts.*、output_dir、data_dir 以及 paths.* 属于预留配置项，当前版本尚未被代码读取，修改它们不会改变运行行为。"
+    "_说明": "引擎地址、SoVITS 根目录、ffmpeg、HF 缓存均可用环境变量覆盖（ABV_ENGINE_URL / ABV_SOVITS_ROOT / ABV_FFMPEG_DIR / ABV_HF_CACHE）。paths.* 为预留项。"
   },
   "app_name": "AkiBurger Voice",
   "version": "0.3.0",
@@ -39,9 +39,9 @@
     "media_type": "wav"
   },
   "paths": {
-    "sovits_root": "D:\\Dev\\ai\\02_GPT-SoVITS_配音\\GPT-SoVITS",
-    "ffmpeg_dir": "D:\\Dev\\tools\\ffmpeg\\bin",
-    "hf_cache": "D:\\Dev\\cache\\huggingface\\hub",
+    "sovits_root": "",
+    "ffmpeg_dir": "",
+    "hf_cache": "",
     "ollama_url": "http://127.0.0.1:11434",
     "builtin_translate_model": "models--shun89--opus-mt-zh-ja"
   }

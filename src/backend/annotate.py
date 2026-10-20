@@ -2,7 +2,7 @@
 """
 标注：查看 / 修改每段音频对应的文本。
 
-数据来源是 setsuna_clean.list（识别 + 清洗后的结果），
+数据来源是清洗后的清单（识别 + 清洗的结果），
 界面里可以逐条试听、改文本、保存。
 改完的文本直接写回文件，训练时用到的就是改后的版本。
 """
@@ -12,10 +12,12 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+import project_paths
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data" / "setsuna"
+DATA_DIR = project_paths.dataset_dir(create=True)
 WAV_DIR = DATA_DIR / "wav"
-LIST_FILE = DATA_DIR / "setsuna_clean.list"
+_DATASET, _MAIN_LIST, _CLEAN_LIST = project_paths.list_paths()
+LIST_FILE = _CLEAN_LIST or (DATA_DIR / f"{DATA_DIR.name}_clean.list")
 BACKUP_DIR = DATA_DIR / "list_backups"
 _file_lock = threading.Lock()
 
@@ -89,7 +91,7 @@ def save_text(wav_path: str, text: str) -> dict:
         # 备份一次，改坏了能找回
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        (BACKUP_DIR / f"setsuna_clean_{stamp}.list").write_text(
+        (BACKUP_DIR / f"{LIST_FILE.stem}_{stamp}.list").write_text(
             LIST_FILE.read_text(encoding="utf-8"), encoding="utf-8")
         # 只保留最近 10 份备份
         backups = sorted(BACKUP_DIR.glob("*.list"))

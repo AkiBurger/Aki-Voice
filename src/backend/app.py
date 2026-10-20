@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# abv-provenance: ABV-2026-1020-AKIBURGER-01 | AkiBurger Voice | MIT | https://github.com/AkiBurger/voice-studio
 """
 AkiBurger Voice 后端服务。
 
@@ -45,6 +46,7 @@ import data_prep
 import folder_picker             # 文件夹选择框
 import qc
 import annotate
+import project_paths
 
 # ---------- 路径 ----------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]   # voice-studio/
@@ -54,15 +56,12 @@ OUTPUT_DIR = PROJECT_ROOT / "outputs"                 # 合成产物都在这
 STATIC_DIR = PROJECT_ROOT / "src" / "static"          # 前端静态页面
 CONFIG_FILE = PROJECT_ROOT / "config.json"
 
-# GPT-SoVITS 的权重目录（扫描用，不写死具体模型）
-SOVITS_ROOT = None
-for _d in Path(r"D:\Dev\ai").glob("02_GPT-SoVITS_*"):
-    if (_d / "GPT-SoVITS" / "api_v2.py").exists():
-        SOVITS_ROOT = _d / "GPT-SoVITS"
-        break
+# GPT-SoVITS 的权重目录（自动探测，可用 ABV_SOVITS_ROOT 覆盖）
+SOVITS_ROOT = project_paths.sovits_root()
 SOVITS_WEIGHTS_DIR = (SOVITS_ROOT / "SoVITS_weights_v2Pro") if SOVITS_ROOT else None
 GPT_WEIGHTS_DIR = (SOVITS_ROOT / "GPT_weights_v2Pro") if SOVITS_ROOT else None
 
+PROVENANCE = "ABV-2026-1020-AKIBURGER-01"
 HOST = "127.0.0.1"
 PORT = 8017
 
@@ -214,7 +213,7 @@ def list_ref_files() -> list:
     if not REF_DIR.exists():
         return refs
     for f in sorted(REF_DIR.glob("*.wav")):
-        # 文件名约定：<角色名>_<编号>.wav，如 setsuna_03.wav
+        # 文件名约定：<音色名>_<编号>.wav，如 voice_03.wav
         char = f.stem.rsplit("_", 1)[0]
         refs.append({
             "name": f.stem,
@@ -292,7 +291,7 @@ def list_models() -> list:
     """
     扫描 GPT-SoVITS 的权重目录，列出可用的训练模型。
     不写死在配置里 —— 目录里有什么就显示什么。
-    命名约定：SoVITS 文件名里的 _eN_ 就是训练轮数（如 setsuna_light_e2_s362.pth → e2）。
+    命名约定：SoVITS 文件名里的 _eN_ 就是训练轮数（如 voice_light_e2_s94.pth → e2）。
     id 用文件名去扩展名（唯一 —— 修了"e2 撞车，前端永远选到旧模型"的问题）。
     用户可以给模型改名，名字存在 data/models.json 的 names 里。
     """
@@ -306,7 +305,7 @@ def list_models() -> list:
             epoch = int(m.group(1))
             default_name = f"e{epoch}"
             models.append({
-                "id": f.stem,                        # 唯一 id：setsuna_light_e6_s294
+                "id": f.stem,                        # 唯一 id：voice_light_e6_s294
                 "label": custom.get(f.name) or default_name,
                 "name": custom.get(f.name) or default_name,
                 "default_name": default_name,
@@ -445,7 +444,7 @@ def build_tones_if_missing() -> bool:
     """
     语气库没有生成过时，从清洗列表里自动挑一次参考音频。
 
-    做法：按 judge_tone 把 setsuna_clean.list 里的句子分到 6 种语气，
+    做法：按 judge_tone 把标注清单里的句子分到 6 种语气，
     每种语气挑最典型的 2 段，把 wav 复制进 data/ref/tones/<语气>/，
     写入 tones.json。之后合成选语气时就能自动挑到对应参考音频，
     不会静默回退到默认参考。
@@ -458,8 +457,8 @@ def build_tones_if_missing() -> bool:
     with _tone_build_lock:
         if _tone_build_done or (TONES_DIR / "tones.json").exists():
             return True
-        clean = DATA_DIR / "setsuna" / "setsuna_clean.list"
-        if not clean.exists():
+        _, _, clean = project_paths.list_paths()
+        if clean is None or not clean.exists():
             _tone_build_done = True       # 没数据，不反复试
             return False
         picked = {t: [] for t in TONES}
@@ -582,7 +581,7 @@ def _guess_prompt_lang(text: str) -> str:
     - 纯 ASCII → en
     - 拿不准（空文本等）→ ja（当前语气库/参考库全是日文，这是安全的默认）
 
-    以前这里硬编码 "ja"：只要参考音频全是日文就没问题，
+    这里原本固定按日语处理，现在改成按参考音频的实际语言判断，
     但将来混入中文/英文参考音频就会把 prompt_lang 传错。加这个启发式防患。
     """
     t = (text or "").strip()
@@ -647,6 +646,8 @@ def health():
         "status": "ok",
         "engine_up": is_engine_up(),
         "translator_up": is_translator_up(),
+        "app": "AkiBurger Voice",
+        "provenance": PROVENANCE,
     }
 
 
@@ -704,7 +705,7 @@ def models():
 
 
 class ActivateModelRequest(BaseModel):
-    file: str          # SoVITS 权重文件名（或文件 stem），如 setsuna_light_e6_s294.pth
+    file: str          # SoVITS 权重文件名（或文件 stem），如 voice_light_e6_s294.pth
 
 
 @app.post("/api/models/activate")
@@ -733,7 +734,7 @@ def activate_model(req: ActivateModelRequest):
 
 
 class RenameModelRequest(BaseModel):
-    file: str          # 权重文件名，如 setsuna_light_e2_s362.pth
+    file: str          # 权重文件名，如 voice_light_e2_s94.pth
     name: str = ""     # 新名字；留空 = 恢复默认 eN
 
 
@@ -793,7 +794,7 @@ def rename_model(req: RenameModelRequest):
 
 
 # ============================================================
-# 音色显示名（界面上显示的名字，如「東馬」，不再写死「雪菜」）
+# 音色显示名
 # ============================================================
 VOICE_NAME_FILE = DATA_DIR / "voice.json"
 
@@ -866,15 +867,35 @@ def _rm_dir_contents(path: Path) -> int:
     return freed
 
 
+def _latest_training_log_dir():
+    """在 GPT-SoVITS/logs 下找最近用过的实验目录（按修改时间）。"""
+    if SOVITS_ROOT is None:
+        return None
+    logs = SOVITS_ROOT / "logs"
+    if not logs.exists():
+        return None
+    candidates = []
+    for item in logs.iterdir():
+        if not item.is_dir():
+            continue
+        if (list(item.glob("logs_s1*")) or (item / "5-wav32k").exists()
+                or (item / "_backups").exists()):
+            candidates.append(item)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
 def _train_logs_cleanables() -> dict:
     """
-    GPT-SoVITS/logs/setsuna_light 里可清理的垃圾，分三类：
+    训练日志目录里可清理的垃圾，分三类：
       old_backups: _backups 里除最新一个以外的目录
       old_ckpt:    _old_ckpt_* 目录（旧 checkpoint）
       regen:       3-bert / 4-cnhubert / 5-wav32k / 7-sv_cn（可重算特征）
     保留 logs_s1_v2Pro / logs_s2_v2Pro 与最新备份（续训要用）。
     """
-    base = (SOVITS_ROOT / "logs" / "setsuna_light") if SOVITS_ROOT else None
+    base = _latest_training_log_dir()
     out = {"base": base, "old_backups": 0, "old_ckpt": 0, "regen": 0, "total": 0}
     if base is None or not base.exists():
         return out
@@ -1053,7 +1074,7 @@ def ref_from_history(req: RefFromHistoryRequest):
     stem = f"hist_{t}"
     dst = REF_DIR / f"{stem}.wav"
 
-    # 引擎硬性要求参考音频 3~10 秒（实测 2.91s 会被引擎 400 拒绝）。
+    # 引擎要求参考音频在 3~10 秒之间。
     # 超范围直接拒绝保存（简单可靠），不让用户固化出一条合成必失败的参考。
     duration = None
     try:

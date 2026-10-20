@@ -2328,3 +2328,12 @@ body.no-char .custom-char { display: none; }
 .model-manage-epoch { margin-left: 6px; font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-faint); }
 .model-manage-active { flex-shrink: 0; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--primary-soft); color: var(--primary-deep); }
 .model-manage-row .btn-danger-link { flex-shrink: 0; height: 24px; }
+
+.settings-credit {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 9.5px;
+  color: var(--ink-faint);
+  letter-spacing: .02em;
+}

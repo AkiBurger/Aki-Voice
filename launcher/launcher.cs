@@ -1,3 +1,4 @@
+// abv-provenance: ABV-2026-1020-AKIBURGER-01 | AkiBurger Voice | MIT
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -25,9 +26,60 @@ namespace AkiBurgerVoice
     public class Launcher : Form
     {
         // ===== 原有配置（保持端口/路径/命令不变） =====
-        const string PROJECT_ROOT = @"D:\Dev\projects\voice-studio";
-        const string AI_ROOT = @"D:\Dev\ai";
-        const string FFMPEG_BIN = @"D:\Dev\tools\ffmpeg\bin";
+        static string _projectRoot;
+        static string _aiRoot;
+        static string _ffmpegBin;
+
+        // 项目根目录 = exe 所在目录；可用 ABV_PROJECT_ROOT 覆盖
+        static string PROJECT_ROOT
+        {
+            get
+            {
+                if (_projectRoot != null) return _projectRoot;
+                string env = Environment.GetEnvironmentVariable("ABV_PROJECT_ROOT");
+                if (!string.IsNullOrEmpty(env) && Directory.Exists(env))
+                {
+                    _projectRoot = env.TrimEnd('\\');
+                    return _projectRoot;
+                }
+                _projectRoot = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+                return _projectRoot;
+            }
+        }
+
+        // AI 根目录：默认在项目的上两级（<根>\projects\<项目> → <根>\ai）
+        static string AI_ROOT
+        {
+            get
+            {
+                if (_aiRoot != null) return _aiRoot;
+                string env = Environment.GetEnvironmentVariable("ABV_AI_ROOT");
+                if (!string.IsNullOrEmpty(env) && Directory.Exists(env))
+                {
+                    _aiRoot = env.TrimEnd('\\');
+                    return _aiRoot;
+                }
+                _aiRoot = Path.GetFullPath(Path.Combine(PROJECT_ROOT, "..", "..", "ai"));
+                return _aiRoot;
+            }
+        }
+
+        // ffmpeg 目录：默认 <根>\tools\ffmpeg\bin
+        static string FFMPEG_BIN
+        {
+            get
+            {
+                if (_ffmpegBin != null) return _ffmpegBin;
+                string env = Environment.GetEnvironmentVariable("ABV_FFMPEG_DIR");
+                if (!string.IsNullOrEmpty(env) && Directory.Exists(env))
+                {
+                    _ffmpegBin = env.TrimEnd('\\');
+                    return _ffmpegBin;
+                }
+                _ffmpegBin = Path.GetFullPath(Path.Combine(AI_ROOT, "..", "tools", "ffmpeg", "bin"));
+                return _ffmpegBin;
+            }
+        }
         const string ENGINE_URL = "http://127.0.0.1:9880";
         const string BACKEND_URL = "http://127.0.0.1:8017";
         const string PAGE_URL = "http://127.0.0.1:8017/static/index.html";
@@ -142,7 +194,7 @@ namespace AkiBurgerVoice
         bool hoverMin;
         int pressed = 0;
 
-        // QA 自截图 / 状态注入（仅环境变量启用；正常启动无影响）
+        // 调试截图 / 状态注入（仅环境变量启用；正常启动无影响）
         readonly string shotDir;
         readonly float[] shotTimes;
         int shotIndex;
@@ -795,7 +847,7 @@ namespace AkiBurgerVoice
         }
 
         // ============================================================
-        //  QA 状态注入（仅 ABV_LAUNCHER_QA_STATE 存在时；正常启动走真实流程）
+        //  调试状态注入（仅调试环境变量存在时；正常启动走真实流程）
         // ============================================================
         void ApplyQaState(string state)
         {
@@ -830,7 +882,7 @@ namespace AkiBurgerVoice
             {
                 rows[0].State = StepState.Ready; rows[0].Detail = "127.0.0.1:9880";
                 rows[1].State = StepState.Ready; rows[1].Detail = "127.0.0.1:8017";
-                rows[2].State = StepState.Ready; rows[2].Detail = "setsuna_light_e2_s362.pth + setsuna_light-e8.ckpt";
+                rows[2].State = StepState.Ready; rows[2].Detail = "音色权重已就绪";
                 stageNote = "准备就绪";
                 progress = 100f;
                 if (s == "settings")
@@ -844,7 +896,7 @@ namespace AkiBurgerVoice
             if (charFadeStart >= 0f) charFadeStart = (float)clock.Elapsed.TotalSeconds - CHAR_FADE_SECONDS;
             EnsureTimer();
             Invalidate();
-            Log("QA 状态: " + s);
+            Log("调试状态: " + s);
         }
 
         // ============================================================
@@ -1729,7 +1781,7 @@ namespace AkiBurgerVoice
         }
 
         // ============================================================
-        //  QA 自截图（不依赖桌面可见性/DWM 合成）
+        //  调试截图（不依赖桌面可见性/DWM 合成）
         // ============================================================
         static string ReadEnv(string name)
         {

@@ -12,8 +12,10 @@ import threading
 import torch
 from transformers import MarianMTModel, MarianTokenizer
 
+import project_paths
+
 MODEL_REPO = "models--shun89--opus-mt-zh-ja"
-HF_CACHE = r"D:\Dev\cache\huggingface\hub"
+HF_CACHE = str(project_paths.hf_cache())
 
 # 已加载的模型（懒加载、线程安全）
 _lock = threading.Lock()

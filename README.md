@@ -1,441 +1,195 @@
 # AkiBurger Voice
 
-**一个本地 Windows 桌面工具：把「素材 → 质检 → 标注 → 训练 → 评测 → 合成」串成一条流水线，用你自己的声音说中文、日文、英文。**
+**基于 GPT-SoVITS v2Pro 的本地配音工作台（Windows）。**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Platform: Windows](https://img.shields.io/badge/Platform-Windows-4a9eff)
+把素材导入、质检、标注、训练、评测、合成放在同一个界面里，训练好的音色可以直接用来读中文、日文、英文台词。
 
-> 全部本地运行 —— 素材、模型、合成结果都留在你自己电脑上，不经过任何服务器。
-> 训练与合成引擎是 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) v2Pro。
+## 开始之前：先准备这些
 
----
+**这个仓库只包含程序代码，不包含模型、声音素材或训练数据。** 直接 git clone 下来是跑不了合成的，需要先准备：
 
-## 这是什么
+| 必须先准备 | 用途 | 大小 | 从哪来 |
+|---|---|---|---|
+| **GPT-SoVITS v2Pro**（含预训练模型） | 声音合成与训练引擎 | 10GB 以上 | [官方仓库](https://github.com/RVC-Boss/GPT-SoVITS)，按它的文档下载 |
+| **Python 环境** | 后端和训练脚本运行 | — | 直接用 GPT-SoVITS 自带的 venv |
+| **ffmpeg** | 素材转码、音频读取 | 约 100MB | [ffmpeg.org](https://ffmpeg.org/download.html) |
+| **NVIDIA 显卡** | 训练和合成 | 8GB 显存起步 | — |
+| **Fun-ASR-Nano**（要训练才需要） | 把素材识别成文本 | 约 1.9GB | ModelScope / HuggingFace |
 
-不是"抓一个模型包一层界面"。这个项目把声音克隆拆成六个页面，每一环都单独选过工具，
-训完自动用声纹模型给"像不像"打分 —— **把训练从玄学变成可对比的数字**。
+这些没准备好时，程序能打开，但合成、训练、识别会不可用。
 
+- 完整安装步骤：[docs/install.md](docs/install.md)
+- 想少走弯路：PowerShell 运行 `tools\setup_windows.ps1`，会检查并下载缺失的 GPT-SoVITS、ffmpeg、Fun-ASR 和翻译模型；加 `-DryRun` 只预览不下载
+- 装好后快速自检：`python tools\check_env.py`
+- 只是想体验界面：代码可以直接跑起来看空界面，不需要模型
+
+![合成页](docs/assets/01-synthesis.png)
+
+## 这个工具解决什么问题
+
+做一次私有音色的配音，通常要来回切换好几个脚本：转码、识别、改标注、跑训练、看分数、再合成。
+每一步都可能因为路径、格式、显存、参考音频时长卡住，而且中间产物散落一地。
+这个项目把这些步骤收进一个本地网页界面，从而优化手感：
+
+素材 → 质检 → 标注 → 训练 → 评测 → 合成
 ```
-素材  →  质检  →  标注  →  训练  →  评测  →  合成
-导入音频   查问题    核对文本   训模型    打分数   出配音
-```
+界面、训练脚本、后端服务都跑在本机，素材、模型、生成结果均不上传任何服务器。
 
-它做两件事：
+## 适合谁
 
-1. **造声音** —— 导入音频、自动识别、清洗、训练，产出人声模型
-2. **用声音** —— 选一个模型，输入文案，输出中文／日文／英文配音
+- 有 NVIDIA 显卡（8GB 显存起步），愿意按文档准备 GPT-SoVITS 环境的 Windows 用户
+- 想训练并使用自己（或已获授权）的音色，长期做中文 / 日文 / 英文配音
 
----
 
-## 功能清单（六页流程）
+## 功能
 
-| 页面 | 能做什么 | 细节 |
-|---|---|---|
-| 🎵 **素材** | 导入训练音频 | 浏览文件夹 → 扫描 → 一键导入（自动转 16k 单声道 wav，已导入的跳过）；支持 ogg / wav / flac / mp3 / m4a / aac / opus / wma；再次「识别 + 清洗」得到训练清单；删除进回收站，可恢复 |
-| 🔍 **质检** | 自动查素材问题 | 音频：太短 / 太长 / 声音太小 / 静音太多 / 爆音 / 读不出来；文本：乱码、重复字符、太长太短、同句重复。结果分「通过 / 警告 / 不合格」，可筛选 |
-| ✍️ **标注** | 核对并修改文本 | 逐条试听 + 改识别错的文本；保存自动备份（最近 10 份），写回训练清单 |
-| 🎬 **训练** | 一键训练模型 | GPT-SoVITS v2Pro 微调：音色模型（SoVITS）+ 韵律模型（GPT）；后台跑、实时日志与阶段进度、可随时停止、训完自动挂载新权重；轮数 / 批量 / 保存间隔 / 学习率可调，可勾选"训完自动评测" |
-| 📊 **评测** | 给"像不像"打分 | 自动合成 11 句测试台词（5 日 + 3 中 + 3 英），用 ERes2NetV2 声纹模型算相似度；≥0.78 很像 / ≥0.65 像 / ≥0.50 一般 / <0.50 不像；保留历史评测，方便对比不同训练版本 |
-| 🎙️ **合成** | 文字转语音 | 输入 / 输出语言（中 / 日 / 英，跨语言自动翻译：中→日有内置模型兜底，其它方向需 Ollama）；语气自动判断 + 可手动改（有语气参考库时按语气自动切换参考音频）；长文案自动切句；稳定度 / 随机种子可调；批量合成（每行一句，可用「语气｜台词」指定单句语气）；历史记录（最近 20 条）、下载、预设（存在浏览器本地，连参考音频一起记）；历史里满意的结果可一键「设为参考」，下次固定用它作参考；结果面板叫 **LAST TAKE**（左上），历史在 **BACKLOG** 抽屉（左下） |
+| 页面 | 能做什么 |
+|---|---|
+| 合成 | 写台词、选语言和语气、翻译、合成、试听、下载；A/B 对比、批量合成、预设、历史（BACKLOG） |
+| 素材 | 选文件夹、扫描、导入（统一转 16k 单声道）、识别成日文、清洗病态文本 |
+| 质检 | 检查时长、静音、音量、爆音、文本异常；按通过 / 警告 / 不合格筛选，可删除问题素材 |
+| 标注 | 逐条核对识别文本、搜索、修改保存；只显示音频还在的可用条目 |
+| 训练 | 调轮数 / 批量 / 学习率，查看阶段进度和日志；训练完成自动挂载并启用最高轮数模型 |
+| 评测 | 固定 5 句日文 + 3 句中文 + 3 句英文，算声纹相似度分数，保留历史对比 |
+| 设置 | 音色名称、模型管理（启用 / 改名 / 删除）、自定义背景和立绘、页面动效开关、清理空间 |
 
-**设置都在合成页右侧「声の設定」浮层：** 当前音色（自动扫描训练出的权重，可试听 / 改名）、参考音频（自动按语气挑选，或固定某条）、音质微调、预设；顶部状态条显示引擎 / 翻译 / 当前模型 / 版本，左下角是 BACKLOG 历史抽屉。
+其他：
 
----
+- 启动器：自动启动声音引擎和后端、加载权重、打开浏览器；支持高 DPI、单实例、失败重试
+- 左下角有六步教程，第一次打开会提示当前该做哪一步
+- 语气参考库：从训练素材里给 6 种语气各挑参考音频，合成时按语气切换
+- 全部离线：界面字体、图片、图标都在本地
 
-## 界面预览
+## 界面截图
 
-> 界面按用户最终方向定稿（**v0.3.0**）：**日系动漫游戏主界面** —— 全屏原创动漫主视觉（樱花天空 + 右侧少女，5 种表情）、左侧 01~06 竖排大菜单、顶部状态玻璃条、底部 galgame 大对话框（台词输入 + 语言 / 语气 / 合成）、右侧「声の設定」浮层、左上 **LAST TAKE** 结果面板、左下 **BACKLOG** 历史抽屉；页面切换是唯一的动效（P5 斜切扫过，≤320ms）。
-> 设计规范见 [docs/02-界面设计.md](docs/02-界面设计.md) 与 [design-system/akiburger-voice/MASTER-v3.md](design-system/akiburger-voice/MASTER-v3.md)。
-> 界面主视觉为**本地 AI 生成的原创动漫插画**（无版权角色），展示字体为 **OFL 开源的站酷庆科黄油体**（本地 woff2）；全部素材随仓库离线可用，不请求任何外部图片 / 字体。
+| | |
+|---|---|
+| ![合成结果](docs/assets/07-result-waveform.png) | ![素材](docs/assets/04-materials.png) |
+| ![质检](docs/assets/05-qc.png) | ![标注](docs/assets/06-annotation.png) |
+| ![训练](docs/assets/02-training.png) | ![评测](docs/assets/03-evaluation.png) |
 
-**合成页（空状态）** —— 全屏动漫主视觉 + 左侧 01~06 菜单 + 底部 galgame 对话框 + 右侧「声の設定」。
-
-![合成页：语音合成（空状态）](docs/assets/01-synthesis.png)
-
-**训练页** —— 同一外壳换成玻璃卡片：本次训练 / 训练参数 / 高级参数 / 开始训练。
-
-![训练页：参数与开始训练](docs/assets/02-training.png)
-
-**评测页** —— 声纹相似度打分（大分数 + 人话结论），下方是历史评测分档列表。
-
-![评测页：历史评测分数](docs/assets/03-evaluation.png)
-
-**素材页** —— 导入 / 识别训练素材；图示为已导入 370 段、约 31.9 分钟，支持按文件名搜索。
-
-![素材页：已导入素材列表](docs/assets/04-materials.png)
-
-**质检页** —— 自动检查音频 / 文本问题，按通过 / 警告 / 不合格分类（图示为空态）。
-
-![质检页：检查结果](docs/assets/05-qc.png)
-
-**标注页** —— 逐条试听并修改识别文本，保存即写回训练清单。
-
-![标注页：逐条改文本](docs/assets/06-annotation.png)
-
-**LAST TAKE 结果面板** —— 合成成功后左上弹出：翻译核对 + 播放器 + 元信息 + 波形 + A/B 对比 + 下载 / 设为参考 / 存成预设；历史在左下 BACKLOG。
-
-![结果面板：LAST TAKE（波形、A/B 与历史入口）](docs/assets/07-result-waveform.png)
-
----
-
-## 它能做什么，不能做什么
-
-**能做：**
-- 用 30 分钟左右的素材训出一个像样的音色模型（RTX 4060 8G 实测：370 条 / 33 分钟音频，全流程约 35 分钟）
-- 用训好的模型给中 / 日 / 英文文案配音，长文自动切句、跨语言自动翻译
-- 同一个音色说 6 种语气：合成时按语气自动切换参考音频（需先生成语气参考库，见[常见问题 9](#9-语气真的会改变声音吗)）
-- 客观对比不同训练轮数的效果，挑分数高的留下
-
-**暂时不能：**
-- **相似度的上限由数据决定**。软件能做的是把数据洗干净、标注改对、参数选好；
-  一段满是杂音的录音，任何软件都救不回来。这是预期，不是 bug。
-- 语气判断是关键词规则（v1），不是语义理解：判错了在界面上直接点选改；
-  语气参考库要先运行 `python data/setsuna/build_tones.py` 生成，没有时所有语气退回默认参考音频。
-- 不做视频配音、不做人声分离、不做手机版 / 网页版 / 在线服务。
-- 需要 NVIDIA 显卡（8GB 显存起步）；Windows 专用（启动器和文件夹选择框依赖 Windows）。
-- 仓库不含模型与权重：GPT-SoVITS 本体、预训练模型、训练好的权重都要自己准备（见下一节）。
-
----
-
-## 快速开始
-
-### 一、前置条件
+## 环境要求
 
 | 依赖 | 要求 | 说明 |
 |---|---|---|
-| **Windows** | 10 / 11 64 位 | 启动器、文件夹选择框、进程管理都依赖 Windows |
-| **Python** | 3.10+ | 作者实测 3.13.15；GPT-SoVITS 官方建议 3.10 ~ 3.11 |
-| **GPT-SoVITS** | v2Pro | 从 GitHub 上的 [GPT-SoVITS 官方仓库](https://github.com/RVC-Boss/GPT-SoVITS) 下载代码，并按它的 README 下载 v2Pro 预训练模型（几个 GB，不进本仓库） |
-| **Fun-ASR-Nano 模型** | 要训练才需要 | 素材页的「识别 + 清洗」用，约 1.9GB，放 HF 缓存目录；`data/setsuna/batch_asr.py` 里写死了模型目录与快照路径，换机器要改这一行（见 [docs/07](docs/07-开源发布说明.md) 已知限制） |
-| **ffmpeg** | 实测 7.x | 导入素材转码用；把 `ffmpeg.exe` 所在目录准备好（本机：`D:\Dev\tools\ffmpeg\bin`） |
-| **NVIDIA GPU** | 8GB 显存起步 | RTX 4060 Laptop 8G 实测可训练；显存太小请先看[常见问题](#常见问题) |
-| **Ollama + Qwen3** | 可选 | 本地大模型翻译更自然；不装会自动用内置的中→日小模型 |
-| **.NET Framework 4.x** | 可选 | 只有重新编译启动器才需要（Windows 自带 csc.exe） |
+| Windows | 10 / 11 64 位 | 启动器和文件夹选择框只支持 Windows |
+| Python | 3.10+ | 建议直接复用 GPT-SoVITS 自带的 venv |
+| GPT-SoVITS | v2Pro | 引擎和预训练模型需要单独下载，体积约几个 GB |
+| ffmpeg | 7.x 可用 | 素材转码、音频读取需要 |
+| NVIDIA GPU | 8GB 显存起步 | 8GB 可以训练，合成和训练不要同时跑 |
+| Fun-ASR-Nano | 约 1.9GB | 只在「识别 + 清洗」时需要 |
+| Ollama + Qwen3 | 可选 | 翻译更自然；不装时用内置的中→日小模型 |
 
-### 二、目录约定
+完整安装步骤见 [docs/install.md](docs/install.md)。
 
-每个目录/文件放什么、哪些能删、哪些不能动，见 [docs/08-项目目录注释.md](docs/08-项目目录注释.md)。
+## 安装（简述）
 
-当前版本（v0.3.0）把作者机器的目录布局写死在启动器和部分模块里，**二选一**：
-
-**方式 A：照这个布局放（最省事）**
-
-```
-D:\Dev\
-├── ai\
-│   └── 02_GPT-SoVITS_配音\
-│       ├── .venv\                      ← GPT-SoVITS 的 Python 环境
-│       └── GPT-SoVITS\                 ← 引擎源码（含 api_v2.py、预训练模型、权重目录）
-├── cache\huggingface\hub\              ← HuggingFace 模型缓存
-├── projects\
-│   └── voice-studio\                   ← 本项目
-└── tools\ffmpeg\bin\                   ← ffmpeg.exe
-```
-
-**方式 B：放到别处** —— 需要改路径常量，或设置环境变量。改动点集中在：
-
-| 位置 | 写死的路径 |
-|---|---|
-| `launcher/launcher.cs` | `PROJECT_ROOT`、`AI_ROOT`、`FFMPEG_BIN` |
-| `src/backend/app.py`、`trainer.py`、`evaluate.py` | 在 `D:\Dev\ai\02_GPT-SoVITS_*` 下自动探测引擎目录 |
-| `src/backend/data_prep.py` | `D:\Dev\tools\ffmpeg\bin\ffmpeg.exe` |
-| `src/backend/translate_local.py` | `D:\Dev\cache\huggingface\hub` |
-| `data/setsuna/train.py` | GPT-SoVITS 与训练数据目录 |
-| `data/setsuna/batch_asr.py`、`clean_data.py` | Fun-ASR 模型快照路径、训练数据目录 |
-
-支持的环境变量：`ABV_ENGINE_URL`、`ABV_OLLAMA_URL`、`ABV_OLLAMA_MODEL`、`ABV_TRANSLATE_ENGINE`、`ABV_SOVITS_ROOT`（细节见 [src/backend/requirements-note.txt](src/backend/requirements-note.txt)）。
-
-### 三、安装
-
-```bash
+```bat
 git clone https://github.com/AkiBurger/voice-studio.git
 cd voice-studio
-```
-
-**安装依赖**（两种方式选一种）：
-
-```bash
-# 方式 A（推荐，和作者一致）：直接复用 GPT-SoVITS 的 venv，依赖已经齐全，跳过 pip
-# 方式 B：自建 Python 3.10+ 环境
-pip install -r requirements.txt
-```
-
-> ⚠️ 如果你已经有 GPT-SoVITS 的 venv，**不要**再用 `pip install` 装 torch / transformers ——
-> 会把和 CUDA 匹配的版本覆盖掉。`requirements.txt` 里的版本下限只保证接口可用，
-> 实际请跟随 GPT-SoVITS venv 的版本。
-
-**配置：**
-
-```bash
 copy config.example.json config.json
 ```
 
-`config.json` 的每个字段在 [config.example.json](config.example.json) 的 `_注释` 里都有说明（JSON 不能写注释，所以说明集中放在下划线键里）。当前版本部分路径按上面的目录约定自动探测，配置文件里也标注了哪些字段是预留项。
-
-### 四、启动
-
-**第 1 步：启动 GPT-SoVITS 引擎**（开一个终端）
-
-```bash
-cd D:\Dev\ai\02_GPT-SoVITS_配音\GPT-SoVITS
-..\.venv\Scripts\python.exe api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer.yaml
-```
-
-首次加载模型需要 1~3 分钟。浏览器能打开 <http://127.0.0.1:9880/docs> 就是就绪了。
-
-**第 2 步：启动后端**（再开一个终端）
-
-```bash
-cd D:\Dev\projects\voice-studio
-D:\Dev\ai\02_GPT-SoVITS_配音\.venv\Scripts\python.exe src\backend\app.py
-```
-
-**第 3 步：打开界面**
-
-浏览器访问 <http://127.0.0.1:8017>（会自动跳转到 `/static/index.html`）。
-
-### 五、一键启动（可选）
-
-从 [GitHub Releases](https://github.com/AkiBurger/voice-studio/releases) 下载 `AkiBurgerVoice.exe`，放到项目根目录，双击即可；或者双击 `启动.bat`。它会依次：
+前提是已经准备好 GPT-SoVITS（含 v2Pro 预训练模型）、ffmpeg 和 Python 环境。
+默认按下面的目录关系自动查找：
 
 ```
-检查环境 → 启动引擎（9880）→ 挂载最新的 SoVITS / GPT 权重
-→ 按需启动 Ollama → 启动后端（8017）→ 打开浏览器
+<根目录>\
+├── ai\<含 GPT-SoVITS 的目录>\GPT-SoVITS\
+├── cache\huggingface\hub\
+├── projects\voice-studio\          ← 本项目
+└── tools\ffmpeg\bin\
 ```
 
-> v0.3.0 的启动器是**自包含单文件**（约 2.1MB，内嵌 4 张主视觉 + 字体子集，无需额外图片文件），
-> 支持 PerMonitorV2 高 DPI（100 / 150 / 200%）、单实例、失败可「重试」或「查看日志」。
+目录不同也可以用环境变量指定，见 [docs/install.md](docs/install.md#五路径与环境变量)。
 
-> ⚠️ 发布到 Releases 的 exe 是按作者目录布局编译的（路径写死）。
-> 如果你的目录不同：改 `launcher/launcher.cs` 顶部的常量，再用 `launcher/build.bat` 重新编译（用 Windows 自带的 csc.exe，不需要装 Visual Studio）。
-> 也可以不用 exe，直接按上面第 1~3 步手动启动。
+## 启动
 
----
+1. 启动声音引擎（9880）
+2. 启动后端（8017）
+3. 浏览器打开 <http://127.0.0.1:8017>
 
-## 第一次使用：六页怎么走
+有编译好的 `AkiBurgerVoice.exe` 时，双击启动器会依次完成上面三步。
+命令行启动和启动器编译方式见 [docs/install.md](docs/install.md#四启动)。
 
-1. **素材**：点「浏览…」选音频文件夹 → 扫描 → 「导入全部音频」→ 「识别 + 清洗」。识别用 Fun-ASR（funasr 包随 GPT-SoVITS venv 提供；Fun-ASR-Nano 模型需在 HF 缓存里，`batch_asr.py` 里写死了它的目录与快照路径）。
-2. **质检**：点「开始质检」，把「不合格」的直接删掉，「警告」的视情况处理。质检结果在换数据 / 换模型时会自动清空。
-3. **标注**：抽查识别文本，改错、保存。训练用的是改后的文本。
-4. **训练**：默认音色模型 6 轮、韵律模型 8 轮、批量 2 / 4（8G 显存友好）。点「开始训练」，进度和日志在页面里看。训完自动挂载新权重。
-5. **评测**：点「开始评测」，约 1.5 分钟。记下分数，换轮数再训一版，对比后留高分模型。
-6. **合成**：在底部 galgame 对话框里写台词 → 选输入 / 输出语言（输入中文、输出日文会自动翻译）→ 语气（默认自动）→ 合成 → 结果在左上 LAST TAKE 面板里试听、下载、存预设；历史在左下 BACKLOG 抽屉里。
-   历史里满意的结果点星标「设为参考」，以后可以固定用它当参考音频；预设会连参考一起保存。
+## 第一次使用
 
-**小提示：**
+1. **素材**：选一个装着人声的文件夹 → 扫描 → 导入全部音频 → 识别 + 清洗
+2. **质检**：开始质检，删除不合格片段，警告的视情况处理
+3. **标注**：抽查识别文本，改错字并保存（训练用的就是改后的文本）
+4. **训练**：默认 6 轮音色 / 8 轮韵律；8GB 显存建议批量 2 / 4。训练完会自动启用最新模型
+5. **评测**：跑一次评测，记下分数；换轮数再训一版可以对比
+6. **合成**：写台词，选输入 / 输出语言和语气，点合成；结果在 LAST TAKE 面板，历史在 BACKLOG
 
-- 参考音频放 `data/ref/*.wav`（GPT-SoVITS 要求 3~10 秒）。默认取文件名排序第一条；
-  生成过语气参考库后，合成会优先按语气使用 `data/ref/tones/` 里的片段（见常见问题 9）。
-  历史里满意的结果点「设为参考」，程序会复制到 `data/ref/hist_*.wav` 并记下当时朗读的文本；
-  也可以手写 `data/ref/ref_texts.json` 给参考音频配文本（训练后的模型带上它合成更稳）。
-- 训练好的权重出现在右侧「声の設定」→「当前音色」下拉里：程序扫描 `SoVITS_weights_v2Pro/*.pth` 文件名里的 `_eN_` 作为轮次 `eN`；
-  可以点「✏️ 改名」起个名字（存在 `data/models.json`，不改文件名）；顶部状态条会同步显示当前模型。
-- 右上齿轮里可以关闭「页面切换动效」和「显示主视觉背景」（低配 / 晕动友好）；设置记在浏览器本地。
-- 合成历史、预设都是本地的；历史记录只保留能播放的最近 20 条。
-
----
+参考音频要求 3~10 秒。默认参考音频放在 `data/ref/*.wav`，生成语气库后会按语气自动切换。
 
 ## 目录结构
 
 ```
 voice-studio/
-├── AkiBurgerVoice.exe          ← C# 启动器（v0.3 起约 2.1MB 自包含；只在 Releases 提供，不进 git）
-├── 启动.bat / 清理痕迹.bat      ← 兼容旧习惯的启动入口 / 清理生成的数据（产物删除、素材移入回收站）
-├── LICENSE                     ← MIT
-├── README.md
-├── requirements.txt            ← 后端依赖（Python 3.10+）
-├── config.example.json         ← 配置示例（复制为 config.json）
-├── docs/                       ← 00~07 设计、踩坑、发布文档
-├── design-system/              ← UI 设计规范（v0.3 权威：MASTER-v3.md）
-├── launcher/                   ← 启动器源码（C# .NET Framework，内嵌主视觉 + 字体子集）
-├── src/
-│   ├── backend/                ← FastAPI 后端（127.0.0.1:8017）
-│   │   ├── app.py              ← 入口：/api/* 与静态托管
-│   │   ├── engine.py           ← 代理 GPT-SoVITS 引擎（127.0.0.1:9880）
-│   │   ├── text_split.py       ← pysbd 智能分句（缺失时回退正则）
-│   │   ├── translate.py / translate_local.py  ← 翻译调度 + 内置 MarianMT
-│   │   ├── emotion.py          ← 语气判断（关键词规则 v1）
-│   │   ├── data_prep.py        ← 素材导入 / 识别清洗
-│   │   ├── qc.py               ← 质检（音频 + 文本）
-│   │   ├── annotate.py         ← 标注读写
-│   │   ├── trainer.py          ← 训练任务管理
-│   │   ├── evaluate.py         ← 声纹评测（ERes2NetV2）
-│   │   ├── folder_picker.py    ← Windows 原生文件夹选择框
-│   │   └── requirements-note.txt
-│   └── static/                 ← 纯静态前端（无构建步骤）
-│       ├── index.html
-│       ├── app.js
-│       ├── styles.css
-│       ├── assets/             ← 5 张原创动漫主视觉 WebP（本地 AI 生成）
-│       └── fonts/              ← 站酷庆科黄油体 woff2（OFL）
-├── data/                       ← 运行数据（不进 git；训练脚本在 setsuna/ 下）
-│   ├── setsuna/
-│   │   ├── wav/                ← 导入的 16k 单声道音频
-│   │   ├── setsuna_clean.list  ← 训练清单
-│   │   ├── batch_asr.py        ← 批量识别
-│   │   ├── clean_data.py       ← 清洗病态样本
-│   │   ├── build_tones.py      ← 生成语气参考库（按 6 种语气挑参考片段）
-│   │   └── train.py            ← 训练脚本（GPT-SoVITS v2Pro 一条龙）
-│   └── ref/                    ← 参考音频（默认 + tones/ 语气参考库）
-├── outputs/                    ← 合成产物（不进 git）
-└── logs/                       ← 启动器 / 引擎 / 后端 / 训练日志（不进 git）
+├─ src/backend/         FastAPI 后端（8017）
+├─ src/static/          纯静态前端（无构建步骤）
+├─ data/voice/          训练脚本（跟踪）与本机素材（不跟踪）
+├─ data/ref/            参考音频（不跟踪）
+├─ launcher/            启动器源码
+├─ docs/                文档与截图
+├─ tools/               自检脚本
+├─ config.example.json  配置示例
+└─ requirements.txt     Python 依赖
 ```
 
----
+每个目录和文件的作用、哪些能删，见 [docs/04-项目目录注释.md](docs/04-项目目录注释.md)。
 
-## 文档
+## 数据与隐私
 
-| 你想知道 | 看这份 |
-|---|---|
-| 这项目到底做什么、为什么这么做 | [00-项目总览](docs/00-项目总览.md) |
-| 用户从打开到出成品，每一步是什么样 | [01-功能全流程](docs/01-功能全流程.md) |
-| 界面长什么样、为什么这么设计 | [02-界面设计](docs/02-界面设计.md) |
-| 按什么顺序做、怎么算做完了 | [03-开发计划](docs/03-开发计划.md) |
-| 每一环为什么选它（含实测数据） | [04-技术选型与调研](docs/04-技术选型与调研.md) |
-| 需要哪些模型、从哪来、多大 | [05-模型与依赖清单](docs/05-模型与依赖清单.md) |
-| 实际踩过的坑和怎么翻过去 | [06-踩坑记录](docs/06-踩坑记录.md) |
-| 发布前检查清单、建仓与 Release 步骤 | [07-开源发布说明](docs/07-开源发布说明.md) |
+- 仓库里只有程序代码、文档、界面图片和字体，**不包含**任何声音素材、训练数据、模型权重或合成音频
+- 训练数据、模型权重、合成结果、日志都在本机 `data/`、`outputs/`、`logs/` 和 GPT-SoVITS 目录下，不会上传
+- 服务只监听 `127.0.0.1`，没有账号、遥测或云端请求
+- 换电脑时想保留音色，请自行备份 `data/` 和 GPT-SoVITS 的权重目录
+- 清理本机缓存：界面右上角齿轮 → 设置 → 清理空间
 
-**第一次看，建议顺序：00 → 01 → 06。**
+## 已知限制
 
----
+- 启动器和文件夹选择框只支持 Windows
+- 默认按固定目录关系查找 GPT-SoVITS / ffmpeg / HuggingFace 缓存；不符合时需要用环境变量指定
+- 语气判断是关键词规则，不是语义模型，判错时可以在界面上手动选
+- 内置翻译模型只做中文 → 日文；其它方向需要本地 Ollama + Qwen3
+- 评测分数是声纹相似度，只衡量「像不像」，不评价自然度或好听程度
+- 没有自动更新，也没有安装包；升级需要自己拉取代码并重新编译启动器（可选）
 
 ## 常见问题
 
-### 1. 显存不足（CUDA out of memory）
+见 [docs/troubleshooting.md](docs/troubleshooting.md)，包含显存不足、引擎起不来、ffmpeg / TorchCodec 报错、路径问题、训练续训、参考音频、翻译和评测等。
 
-- 现象：合成或训练报"显存不够了" / `CUDA out of memory` / `OutOfMemoryError`。
-- HTTP 后端会把引擎的 OOM 翻译成人话返回；训练失败请看 `logs/train_*.log`。
-- 对策：
-  - 关掉其他占显存的程序（浏览器硬件加速、游戏、其他推理服务）；
-  - 训练页把音色批量降到 1、韵律批量降到 2，轮数先试 4 / 4；
-  - 合成和训练不要同时跑；
-  - 显存要真正释放，得等引擎进程退出后重开（停止训练会连带杀掉训练子进程树）。
-- 8GB 显存是实际下限：作者在 RTX 4060 Laptop 8G 上用默认参数（音色 batch 2 / 韵律 batch 4）跑通。
+## 文档
 
-### 2. TorchCodec 报错（`Could not load libtorchcodec`）
+| 文档 | 内容 |
+|---|---|
+| [docs/install.md](docs/install.md) | 安装、路径配置、启动、环境变量 |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | 常见问题与排查 |
+| [docs/01-界面设计.md](docs/01-界面设计.md) | 界面布局、配色、字体、动效 |
+| [docs/02-模型与依赖清单.md](docs/02-模型与依赖清单.md) | 需要哪些模型、从哪来、多大、许可 |
+| [docs/03-开源发布说明.md](docs/03-开源发布说明.md) | 版本更新、升级注意、发布流程 |
+| [docs/04-项目目录注释.md](docs/04-项目目录注释.md) | 每个目录/文件的作用 |
+| [docs/testing.md](docs/testing.md) | 自检和界面冒烟测试 |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | 第三方组件与许可 |
+| [NOTICE.md](NOTICE.md) | 来源标记与版权 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 提交问题和 PR 的约定 |
 
-- 现象：合成时报 `Failed to create AudioDecoder for xxx.wav: Could not load libtorchcodec`。
-- 原因：torchaudio 2.9+ 强制用 TorchCodec 读音频，而 TorchCodec 需要 FFmpeg 的**共享库 DLL**；
-  静态版 `ffmpeg.exe` 只有 exe 没有 DLL。
-- 解决：给 GPT-SoVITS 打补丁 —— 把 `GPT_SoVITS/TTS_infer_pack/TTS.py` 里 `_get_ref_spec()` 的
-  `torchaudio.load` 换成仓库自带的 `tools.my_utils.load_audio`，并把 `ffmpeg\bin` 加进 PATH。
-  补丁代码和定位过程见 [06-踩坑记录 · 坑 1](docs/06-踩坑记录.md)。
-- ⚠️ 这是改 GPT-SoVITS 源码，升级 GPT-SoVITS 后会被覆盖，需要重新打。
+## 开发与测试
 
-### 3. 中文路径
-
-- Windows 下 `s2_train.py` / `s1_train.py` 用系统默认编码（GBK）读临时配置，路径里有中文会变乱码、
-  报"文件明明存在却 assert 失败"。
-- 本项目训练脚本已经处理：临时配置用 `json ensure_ascii=True` / `yaml allow_unicode=False` 写出纯 ASCII 转义；
-  所有 `.bat` 也保持纯 ASCII。
-- 你如果要改训练脚本或自己写临时配置，请保持这个做法（原理见 [06-踩坑记录 · 坑 4、坑 7](docs/06-踩坑记录.md)）。
-
-### 4. 训练中断了，能续训吗？
-
-- 数据准备产出的特征和已保存的权重都在 `GPT-SoVITS/logs/setsuna_light/` 下，中断不会丢。
-- 训练页的「从零训练」选项决定下次怎么开始：
-  - **勾选（默认）**：先备份旧 checkpoint，再从预训练底模重新训，避免上次的断点影响这次指定的轮数；
-  - **取消勾选**：走 GPT-SoVITS 自身的断点续训，从最新 checkpoint 接着训。
-- 中断后重新点「开始训练」即可。已经完成的特征提取步骤会尽量复用；**如果改了标注或新增了素材，
-  建议先重新做一次「识别 + 清洗」再训练**。
-
-### 5. 引擎起不来 / 合成报"声音引擎还没就绪"
-
-- 后端（8017）和引擎（9880）是两个进程，引擎没起来时界面能打开，但合成会失败。
-- 检查：
-  ```bash
-  # 引擎文档页能打开 = 引擎已就绪
-  start http://127.0.0.1:9880/docs
-  # 后端健康检查里 engine_up 应为 true
-  start http://127.0.0.1:8017/api/health
-  ```
-- 引擎首次加载模型 1~3 分钟；启动器最多等 240 秒。超时看 `logs/engine.log`（常见原因：显存不足、缺依赖、TorchCodec 补丁没打）。
-- 端口被占用：`netstat -ano | findstr :9880`、`:8017`、`:11434`（Ollama）。
-
-### 6. 翻译不可用 / 译文里混英文
-
-- 输入语言 = 输出语言时不翻译，直接用原文本合成。
-- **中→日**：Ollama（Qwen）优先；没开 Ollama 会自动用内置 opus-mt 小模型（约 300MB，CPU 推理，首次加载 3~8 秒）。
-- **其它方向**（日→中、英→日等）：内置模型只做中→日，需要启动 Ollama 并拉好 `qwen3` 模型。
-- 翻译结果会显示在结果区，合成前可以先核对；Qwen 偶尔会在译文里混英文，程序检测到会自动改用内置模型重翻。
-- 内置模型放在 HF 缓存里；启动器启动子进程时会设置 `HF_ENDPOINT=https://hf-mirror.com` 镜像加速下载。
-
-### 7. 双击 exe 没反应 / 我的目录和作者不一样
-
-- 发布的 exe 里写死了作者的目录（`D:\Dev\projects\voice-studio`、`D:\Dev\ai`、`D:\Dev\tools\ffmpeg\bin`）。
-- v0.3.0 启动器是自包含单文件（约 2.1MB，内嵌动漫主视觉与字体子集），支持 PerMonitorV2 高 DPI、单实例、失败可「重试」或「查看日志」。
-- 目录不同的话：改 `launcher/launcher.cs` 顶部常量 → 运行 `launcher/build.bat` 重新编译，或直接手动启动（见"快速开始 · 四、启动"）。
-- 启动失败时看 `logs/launcher.log`；引擎/后端日志在 `logs/engine.log`、`logs/backend.log`。
-
-### 8. 模型权重和参考音频放哪？
-
-- 权重：`.pth` 放 `GPT-SoVITS/SoVITS_weights_v2Pro/`，`.ckpt` 放 `GPT-SoVITS/GPT_weights_v2Pro/`。
-  SoVITS 文件名里要有 `_eN_`（训练轮数）才会被识别成 `eN`；放好后刷新页面。
-- 参考音频：放 `data/ref/*.wav`，时长 3~10 秒（超出范围引擎会报错）；默认取排序第一条，它只是"没有语气库时"的兜底。运行 `python data/setsuna/build_tones.py` 生成语气参考库后，合成会按语气改用 `data/ref/tones/` 里的片段（见第 9 条）。
-- 每轮训练的权重大约：SoVITS `.pth` 约 129MB、GPT `.ckpt` 约 148MB，注意磁盘空间。
-
-### 9. 语气真的会改变声音吗？
-
-会。合成时会按语气自动换参考音频：每种语气（平静/开心/悲伤/生气/惊讶/害怕）各挑 1~2 条语气相近的训练片段当参考，
-参考音频的情绪会直接影响合成结果（同 seed 下换语气，音频哈希不同）。
-
-这份"语气参考库"由脚本从你导入的素材里生成：
-
-```
-python data/setsuna/build_tones.py
+```bat
+python src\backend\selftest.py     :: 需要后端和引擎已启动
+node tools\ui_smoke.js             :: 需要后端已启动
 ```
 
-生成在 data/ref/tones/。不运行也能用，只是所有语气都会退回默认参考音频、听起来差不多。
+前端是纯 HTML/CSS/JS，没有构建步骤，改完刷新浏览器即可。
 
-### 10. 能把历史里的合成结果当成参考音频吗？
+## 许可证与声明
 
-可以。历史记录每条右侧有星标按钮「设为参考」，结果区也有同名按钮：
+代码使用 [MIT License](LICENSE)。界面素材为本地 AI 生成的原创插画，展示字体为 OFL 许可的站酷庆科黄油体。
+项目不附带 GPT-SoVITS、FunASR、声纹模型、翻译模型或任何声音数据，使用这些组件时请遵守各自的许可。
+第三方清单见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-- 程序把这段音频复制到 `data/ref/hist_<时间戳>.wav`，并记下当时朗读的文本作为参考文本；
-- 之后在右侧「声の設定」→「参考音频」下拉里选中它，就会固定用这条参考（语气不再自动切换参考音频）；
-- 预设会连参考一起保存；套用预设时如果原参考已被删除，会自动回落到「自动（按语气）」；
-- 参考音频用 3~10 秒的干净片段效果最好，超出范围时引擎会拒绝，界面会提前提示。
-
-### 11. 评测分数怎么理解？
-
-- 分数是**声纹余弦相似度**（0~1），衡量"像不像本人"，不评价好不好听。
-- 分级：≥0.78 很像 / ≥0.65 像 / ≥0.50 一般 / <0.50 不像。
-- 跨语言（中 / 英）分数通常低于本人语言（日），属正常现象；同一批测试句跨版本对比才有意义。
-- 分数上限由训练数据和参考音频决定；参考音频本身清晰、情绪自然，分数更容易上去。
-
----
-
-## 免责声明
-
-**使用本项目即表示你已阅读并同意以下内容：**
-
-1. **只克隆你有权使用的声音。** 请只使用你本人的声音、已获得明确授权的声音，或版权允许的素材。
-   克隆他人声音可能侵犯声音权 / 人格权 / 著作权。
-2. **禁止用于冒充他人、诈骗、造谣、绕过身份验证等任何违法或侵权用途。**
-3. 生成的音频请在必要场景下**明确标注为 AI 合成内容**。
-4. 使用者对使用本项目产生的一切后果负责；作者不对任何滥用或由此造成的损失承担责任。
-5. 本项目不附带任何模型、权重、训练数据或音色；使用 GPT-SoVITS 等第三方组件时，
-   请同时遵守这些项目的许可与条款。
-
----
-
-## License
-
-[MIT License](LICENSE) © 2026 AkiBurger
-
----
-
-## 致谢
-
-本项目站在这些开源项目之上：
-
-- [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) —— 声音合成与训练引擎
-- [FunASR](https://github.com/modelscope/FunASR)（Fun-ASR）—— 语音识别
-- [ERes2NetV2 / 3D-Speaker](https://github.com/modelscope/3D-Speaker) —— 声纹评测
-- MarianMT / opus-mt 系列 —— 内置中→日翻译
-- [pysbd](https://github.com/nipunsadvilkar/pySBD) —— 智能分句
-- [Ollama](https://ollama.com) / Qwen3 —— 可选的本地翻译
-- [FFmpeg](https://ffmpeg.org) —— 音频转码
-
-各模型与数据集的许可归原作者所有，本项目只提供调用方式，不重新分发这些文件。
+**使用前请确认你拥有所使用声音的权利。** 不要克隆他人声音，不要用于冒充、诈骗、造谣或绕过身份验证。
+生成的音频在必要场景下请标注为 AI 合成内容。使用者对使用后果负责。

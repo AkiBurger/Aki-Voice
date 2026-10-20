@@ -22,10 +22,12 @@ from pathlib import Path
 
 import numpy as np
 
+import project_paths
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data" / "setsuna"
+DATA_DIR = project_paths.dataset_dir(create=True)
 WAV_DIR = DATA_DIR / "wav"
-LIST_FILE = DATA_DIR / "setsuna_clean.list"
+_DATASET, _MAIN_LIST, _CLEAN_LIST = project_paths.list_paths()
+LIST_FILE = _CLEAN_LIST or (DATA_DIR / f"{DATA_DIR.name}_clean.list")
 REPORT_FILE = PROJECT_ROOT / "data" / "qc_report.json"
 
 # 判定阈值

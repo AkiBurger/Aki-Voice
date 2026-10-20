@@ -15,9 +15,9 @@ checkpoints*/
 # ---- 音频素材与输出（含用户录音，隐私）----
 # 注意：data/ 下要保留训练脚本（克隆后必须有），所以用分层忽略 + 反忽略
 data/*
-!data/setsuna/
-data/setsuna/*
-!data/setsuna/*.py
+!data/voice/
+data/voice/*
+!data/voice/*.py
 outputs/
 *.wav
 *.mp3

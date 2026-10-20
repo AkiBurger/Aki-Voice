@@ -167,8 +167,9 @@ async function main() {
       await sleep(800);
       const shot = await send('Page.captureScreenshot', { format: 'png' });
       if (shot && shot.result && shot.result.data) {
-        require('fs').writeFileSync('D:\\Dev\\projects\\voice-studio\\docs\\assets\\07-result-waveform.png', Buffer.from(shot.result.data, 'base64'));
-        out.screenshot = '07-result-waveform.png';
+        const outPath = require('path').join(__dirname, '..', 'docs', 'assets', '_waveform-test.png');
+        require('fs').writeFileSync(outPath, Buffer.from(shot.result.data, 'base64'));
+        out.screenshot = outPath;
       }
     } catch (e) { out.screenshotError = String(e); }
     out.errors = errors.slice(0, 8);

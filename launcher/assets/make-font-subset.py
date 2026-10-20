@@ -5,7 +5,7 @@ r"""
 
 源字体获取方式（任选其一）：
   1) 直接给 TTF/WOFF 路径：python assets\make-font-subset.py "D:\path\zcool-full.ttf"
-  2) 本机离线包（本项目开发机）：D:\Dev\tools\_fonts\zcool-qingke-huangyou.tgz
+  2) 本地离线包：设置环境变量 ABV_FONT_TGZ 指向字体压缩包
      解压后取 package/files/zcool-qingke-huangyou-chinese-simplified-400-normal.woff
      （fontTools 能直接读取 woff，无需额外依赖）
   3) 若源字体为 woff2，需要额外安装 brotli：pip install brotli
@@ -26,7 +26,7 @@ OUT_GZ = os.path.join(HERE, "ZCOOLQingKeHuangYou-subset.ttf.gz")
 CANDIDATES = [
     os.path.join(HERE, "ZCOOLQingKeHuangYou.ttf"),
     os.path.join(os.environ.get("TEMP", ""), "abv-v4-launcher", "zcool-full.ttf"),
-    r"D:\Dev\tools\_fonts\zcool-qingke-huangyou.tgz",
+    os.environ.get("ABV_FONT_TGZ", ""),
 ]
 
 GB2312_LEVEL1 = set()

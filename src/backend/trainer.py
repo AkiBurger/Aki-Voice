@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-训练任务管理：后台启动 data/setsuna/train.py，收集日志、解析进度，
+训练任务管理：后台启动数据目录里的 train.py，收集日志、解析进度，
 提供开始/停止/状态查询，训练完把新权重挂到引擎。
 """
 import json
@@ -14,14 +14,11 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 
+import project_paths
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-TRAIN_SCRIPT = PROJECT_ROOT / "data" / "setsuna" / "train.py"
+TRAIN_SCRIPT = project_paths.dataset_dir(create=True) / "train.py"
 LOG_DIR = PROJECT_ROOT / "logs"
-SOVITS_ROOT = None
-for _d in Path(r"D:\Dev\ai").glob("02_GPT-SoVITS_*"):
-    if (_d / "GPT-SoVITS" / "api_v2.py").exists():
-        SOVITS_ROOT = _d / "GPT-SoVITS"
-        break
+SOVITS_ROOT = project_paths.sovits_root()
 
 # 阶段名（跟 train.py 打印的标题对应）
 STAGES = [
@@ -279,11 +276,11 @@ def _start_inner(epochs_s2, epochs_s1, batch_s2, batch_s1,
 
     if not TRAIN_SCRIPT.exists():
         return {"ok": False, "message": f"找不到训练脚本 {TRAIN_SCRIPT}"}
-    clean_list = PROJECT_ROOT / "data" / "setsuna" / "setsuna_clean.list"
+    _, _, clean_list = project_paths.list_paths()
     if not clean_list.exists():
         return {"ok": False, "message": "还没有清洗后的训练数据，先做数据准备"}
-    # 保护：清洗列表为空 / wav 目录为空都不许开训（以前空列表也能启动，白跑一轮）
-    wav_dir = PROJECT_ROOT / "data" / "setsuna" / "wav"
+    # 清洗列表为空 / wav 目录为空都不允许开训，避免白跑一轮
+    wav_dir = project_paths.dataset_dir() / "wav"
     if not wav_dir.exists() or not any(wav_dir.glob("*.wav")):
         return {"ok": False, "message": "还没有可训练的素材（wav 目录是空的），先导入音频"}
     try:
@@ -311,7 +308,7 @@ def _start_inner(epochs_s2, epochs_s1, batch_s2, batch_s1,
         env["ABV_S2_LR"] = str(float(lr_s2))
     if lr_s1 and float(lr_s1) > 0:
         env["ABV_S1_LR"] = str(float(lr_s1))
-    env["PATH"] = r"D:\Dev\tools\ffmpeg\bin;" + env.get("PATH", "")
+    env["PATH"] = str(project_paths.ffmpeg_dir()) + ";" + env.get("PATH", "")
 
     with _lock:
         _lines.clear()
@@ -437,10 +434,10 @@ def status() -> dict:
 
 def dataset_summary() -> dict:
     """训练数据概览（界面上显示）。"""
-    data_dir = PROJECT_ROOT / "data" / "setsuna"
+    data_dir = project_paths.dataset_dir(create=True)
     wav_dir = data_dir / "wav"
     wavs = list(wav_dir.glob("*.wav")) if wav_dir.exists() else []
-    clean_list = data_dir / "setsuna_clean.list"
+    _, _, clean_list = project_paths.list_paths()
     clean_count = 0
     if clean_list.exists():
         clean_count = len([l for l in clean_list.read_text(encoding="utf-8").splitlines() if l.strip()])

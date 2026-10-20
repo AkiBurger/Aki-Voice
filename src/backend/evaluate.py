@@ -12,20 +12,10 @@ from pathlib import Path
 import numpy as np
 import torch
 
-# 找 GPT-SoVITS 根目录：环境变量优先，其次自动探测（找不到时不再崩在 import 阶段）
-import os as _os
+# 找 GPT-SoVITS 根目录：环境变量优先，其次按项目位置自动探测
+import project_paths
 
-SOVITS_ROOT = None
-_env_root = _os.environ.get("ABV_SOVITS_ROOT", "").strip()
-if _env_root:
-    _p = Path(_env_root)
-    if (_p / "GPT_SoVITS" / "api_v2.py").exists():
-        SOVITS_ROOT = _p
-if SOVITS_ROOT is None:
-    for _d in Path(r"D:\Dev\ai").glob("02_GPT-SoVITS_*"):
-        if (_d / "GPT-SoVITS" / "api_v2.py").exists():
-            SOVITS_ROOT = _d / "GPT-SoVITS"
-            break
+SOVITS_ROOT = project_paths.sovits_root()
 
 if SOVITS_ROOT is not None:
     SV_CKPT = SOVITS_ROOT / "GPT_SoVITS" / "pretrained_models" / "sv" / "pretrained_eres2netv2w24s4ep4.ckpt"
@@ -45,8 +35,8 @@ LEVELS = [
 # ============================================================
 # 固定评测句（修"数据泄漏"问题）
 # ============================================================
-# 以前测试句从训练集（setsuna_clean.list）里取样 —— 模型考的是背过的题，
-# 分数虚高，测不出真实水平。现在改成固定手写句，与训练数据完全无关：
+# 测试句固定为手写句，不从训练数据里取样：
+# 训练时见过的句子分数会虚高，固定句才能横向对比。
 #   5 句日文（本人语言）+ 3 句中文 + 3 句英文（跨语言）
 # 来源：手写的通用日常句子，覆盖陈述/情感/质问三类语气；
 # 固定不变的好处：多次评测的结果可以直接横向对比。

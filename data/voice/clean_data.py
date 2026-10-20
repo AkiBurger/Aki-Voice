@@ -1,18 +1,13 @@
 # -*- coding: utf-8 -*-
-"""
-训练数据清洗：把识别结果里的病态样本剔掉。
+"""训练数据清洗：剔除识别结果里的病态样本。
 
-已知问题（实测踩到的）：
-- FunASR 会把一声拖长的「えーーー」识别成 512 个「え」，
-  pyopenjtalk 处理这种文本会直接崩溃（STATUS_STACK_BUFFER_OVERRUN）。
+规则：
+1. 同一字符连续重复超过 6 次
+2. 文本长度与音频时长严重不匹配（每秒 < 1 字或 > 12 字）
+3. 文本长度不在 2~120 字之间
+4. 音频文件不存在
 
-清洗规则：
-1. 同一字符连续重复 > 6 次 → 判为病态，剔除
-2. 文本长度与音频时长严重不匹配（每秒 < 1 字 或 > 12 字）→ 剔除
-3. 文本长度 < 2 或 > 120 → 剔除
-4. 音频文件不存在 → 剔除
-
-输出：setsuna_clean.list（干净版）+ 清洗报告。
+输出：<目录名>_clean.list + 清洗报告。
 """
 import re
 import sys
@@ -20,17 +15,16 @@ from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-DATA = Path(r"D:\Dev\projects\voice-studio\data\setsuna")
-SRC = DATA / "setsuna.list"
-DST = DATA / "setsuna_clean.list"
+DATA = Path(__file__).resolve().parent
+SRC = DATA / f"{DATA.name}.list"
+DST = DATA / f"{DATA.name}_clean.list"
 
-MAX_RUN = 6          # 同一字符最大连续重复
+MAX_RUN = 6
 MIN_LEN, MAX_LEN = 2, 120
-MIN_CPS, MAX_CPS = 1.0, 12.0   # 每秒字数合理范围
+MIN_CPS, MAX_CPS = 1.0, 12.0
 
 
 def audio_duration(path: Path) -> float:
-    """用 soundfile 读时长（秒）。失败返回 0。"""
     try:
         import soundfile as sf
         info = sf.info(str(path))
@@ -40,10 +34,8 @@ def audio_duration(path: Path) -> float:
 
 
 def degenerate(text: str) -> bool:
-    """同一字符连续重复过多，或整句只有 1~2 种字符且很长。"""
-    for m in re.finditer(r"(.)\1{%d,}" % MAX_RUN, text):
+    for _m in re.finditer(r"(.)\1{%d,}" % MAX_RUN, text):
         return True
-    # 长度 > 30 且不同字符 <= 2 种：也是病态（如 "え、え、え、え…"）
     if len(text) > 30 and len(set(text)) <= 2:
         return True
     return False
@@ -62,22 +54,19 @@ def main():
             reasons["格式异常"] += 1
             dropped.append((line[:60], "格式异常"))
             continue
-        wav, spk, lang, text = parts
+        wav, _spk, _lang, text = parts
         text = text.strip()
 
-        # 1. 病态重复
         if degenerate(text):
             reasons["病态重复"] += 1
-            dropped.append((f"{Path(wav).name} | {text[:30]}…", "病态重复"))
+            dropped.append((f"{Path(wav).name} | {text[:30]}", "病态重复"))
             continue
 
-        # 2. 长度
         if not (MIN_LEN <= len(text) <= MAX_LEN):
             reasons["长度不符"] += 1
             dropped.append((f"{Path(wav).name} | len={len(text)}", "长度不符"))
             continue
 
-        # 3. 音频存在 + 时长匹配
         wp = Path(wav)
         if not wp.exists():
             reasons["音频丢失"] += 1

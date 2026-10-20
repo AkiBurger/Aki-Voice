@@ -13,11 +13,15 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data" / "setsuna"
+import project_paths
+DATA_DIR = project_paths.dataset_dir(create=True)
 WAV_DIR = DATA_DIR / "wav"
 ASR_SCRIPT = DATA_DIR / "batch_asr.py"
 CLEAN_SCRIPT = DATA_DIR / "clean_data.py"
-FFMPEG = r"D:\Dev\tools\ffmpeg\bin\ffmpeg.exe"
+_DATASET, _MAIN_LIST, _CLEAN_LIST = project_paths.list_paths()
+MAIN_LIST = _MAIN_LIST or (DATA_DIR / f"{DATA_DIR.name}.list")
+CLEAN_LIST = _CLEAN_LIST or (DATA_DIR / f"{DATA_DIR.name}_clean.list")
+FFMPEG = str(project_paths.ffmpeg_dir() / "ffmpeg.exe")
 
 AUDIO_EXT = {".ogg", ".wav", ".flac", ".mp3", ".m4a", ".aac", ".opus", ".wma"}
 
@@ -186,9 +190,9 @@ def start_prepare() -> dict:
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
         env["PYTHONUNBUFFERED"] = "1"
-        env["PATH"] = r"D:\Dev\tools\ffmpeg\bin;" + env.get("PATH", "")
-        list_file = DATA_DIR / "setsuna.list"
-        clean_file = DATA_DIR / "setsuna_clean.list"
+        env["PATH"] = str(project_paths.ffmpeg_dir()) + ";" + env.get("PATH", "")
+        list_file = MAIN_LIST
+        clean_file = CLEAN_LIST
         old_clean = _read_list(clean_file)      # 用户可能改过的标注
         old_raw = _read_list(list_file)         # 上一轮 ASR 原文（判断哪些是用户手改的）
         # 先备份（识别会全量重写，先留退路）
@@ -198,7 +202,7 @@ def start_prepare() -> dict:
         for f in (list_file, clean_file):
             if f.exists():
                 shutil.copy2(f, backup_dir / f"{f.stem}_{stamp}.list")
-        _say(f"已备份原有标注到 data/setsuna/list_backups/{stamp}")
+        _say(f"已备份原有标注到 {DATA_DIR.name}/list_backups/{stamp}")
         try:
             # 1. ASR
             p = subprocess.Popen([py, "-u", str(ASR_SCRIPT)], cwd=str(PROJECT_ROOT),
@@ -264,7 +268,7 @@ def job_status() -> dict:
 def current_dataset() -> dict:
     """当前已经导入/清洗好的数据。"""
     wavs = list(WAV_DIR.glob("*.wav")) if WAV_DIR.exists() else []
-    clean = DATA_DIR / "setsuna_clean.list"
+    clean = CLEAN_LIST
     clean_count = 0
     if clean.exists():
         for line in clean.read_text(encoding="utf-8").splitlines():
@@ -375,7 +379,7 @@ def _backup_lists() -> None:
     try:
         bk.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        for name_ in ("setsuna.list", "setsuna_clean.list"):
+        for name_ in (MAIN_LIST.name, CLEAN_LIST.name):
             src = DATA_DIR / name_
             if src.exists():
                 shutil.copy2(src, bk / f"{name_.replace('.list', '')}_{stamp}.list")
@@ -388,14 +392,14 @@ def _backup_lists() -> None:
 
 def _prune_lists(targets=None) -> int:
     """
-    从 setsuna.list / setsuna_clean.list 里删掉音频不存在（或指定 targets）的行。
+    从主清单 / 清洗清单里删掉音频不存在（或指定 targets）的行。
     targets=None 表示按"文件是否存在"过滤。
     """
     removed = 0
     drop = set()
     if targets:
         drop = {str(Path(t)).lower() for t in targets}
-    for name_ in ("setsuna.list", "setsuna_clean.list"):
+    for name_ in (MAIN_LIST.name, CLEAN_LIST.name):
         lf = DATA_DIR / name_
         if not lf.exists():
             continue
