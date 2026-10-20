@@ -172,7 +172,127 @@
     evalDetails: $('evalDetails'),
     evalHistory: $('evalHistory'),
     evalHistoryEmpty: $('evalHistoryEmpty'),
+    // v4 游戏主界面 / galgame 外壳
+    sceneA: $('sceneA'),
+    sceneB: $('sceneB'),
+    settingsBtn: $('settingsBtn'),
+    settingsPanel: $('settingsPanel'),
+    motionToggle: $('motionToggle'),
+    charToggle: $('charToggle'),
+    voicePanel: $('voicePanel'),
+    voicePanelToggle: $('voicePanelToggle'),
+    backlogDrawer: $('backlogDrawer'),
+    backlogToggle: $('backlogToggle'),
+    backlogBody: $('backlogBody'),
+    backlogCount: $('backlogCount'),
+    speakerTone: $('speakerTone'),
+    pageVeil: $('pageVeil'),
   };
+
+  // ---------- A 式主视觉背景（角色在右、左侧留白；表情 = 背景 120ms 交叉淡入） ----------
+  // 5 张 1920×1277 WebP 主视觉：人物在画面右侧，脸在视觉面板/对话框之上留出空间；
+  // idle 同时作为其它 5 页的默认背景。
+  const SCENE_SRC = {
+    idle: 'assets/hero-idle.webp',
+    happy: 'assets/hero-happy.webp',
+    thinking: 'assets/hero-thinking.webp',
+    surprised: 'assets/hero-surprised.webp',
+    sad: 'assets/hero-sad.webp',
+  };
+  const ui = {
+    sceneState: 'idle',
+    sceneLayer: 'A',
+    sceneSrc: '',
+    charTimer: 0,
+    trainRunning: false,
+  };
+
+  function prefersReducedMotion() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+  }
+
+  function preloadScenes() {
+    Object.values(SCENE_SRC).forEach((src) => {
+      const img = new Image();
+      img.src = src;
+    });
+  }
+
+  function initScenes() {
+    if (!els.sceneA || !els.sceneB) return;
+    const src = SCENE_SRC.idle;
+    els.sceneA.style.backgroundImage = 'url("' + src + '")';
+    els.sceneB.style.backgroundImage = 'url("' + src + '")';
+    els.sceneA.classList.add('is-active');
+    els.sceneB.classList.remove('is-active');
+    ui.sceneLayer = 'A';
+    ui.sceneSrc = src;
+  }
+
+  // 表情切换 = 背景图交叉淡入淡出（120ms，只在 transform/opacity 之外仅动 opacity）
+  function setCharacter(name) {
+    if (!SCENE_SRC[name]) name = 'idle';
+    ui.sceneState = name;
+    const src = SCENE_SRC[name];
+    clearTimeout(ui.charTimer);
+    if (name === 'happy' || name === 'sad' || name === 'surprised') {
+      ui.charTimer = setTimeout(() => {
+        setCharacter(state.inFlight ? 'thinking' : 'idle');
+      }, name === 'surprised' ? 1400 : 2600);
+    }
+    if (!els.sceneA || !els.sceneB) return;
+    if (ui.sceneSrc === src) return;
+    const from = ui.sceneLayer === 'A' ? els.sceneA : els.sceneB;
+    const to = ui.sceneLayer === 'A' ? els.sceneB : els.sceneA;
+    to.style.backgroundImage = 'url("' + src + '")';
+    to.classList.add('is-active');
+    from.classList.remove('is-active');
+    ui.sceneLayer = ui.sceneLayer === 'A' ? 'B' : 'A';
+    ui.sceneSrc = src;
+  }
+
+  function playPageTransition() {
+    if (!els.pageVeil) return;
+    if (document.body.classList.contains('no-motion') || prefersReducedMotion()) return;
+    els.pageVeil.classList.remove('run');
+    void els.pageVeil.offsetWidth;
+    els.pageVeil.classList.add('run');
+    clearTimeout(playPageTransition._timer);
+    playPageTransition._timer = setTimeout(() => els.pageVeil.classList.remove('run'), 340);
+  }
+
+  function applyDisplaySettings() {
+    let motionOn = true;
+    let charOn = true;
+    try {
+      motionOn = localStorage.getItem('abv:motion') !== '0';
+      charOn = localStorage.getItem('abv:char') !== '0';
+    } catch (e) { /* 存不上就保持默认 */ }
+    document.body.classList.toggle('no-motion', !motionOn);
+    document.body.classList.toggle('no-char', !charOn);
+    if (els.motionToggle) els.motionToggle.checked = motionOn;
+    if (els.charToggle) els.charToggle.checked = charOn;
+  }
+
+  function openSettings(open) {
+    if (!els.settingsPanel || !els.settingsBtn) return;
+    els.settingsPanel.classList.toggle('hidden', !open);
+    els.settingsBtn.setAttribute('aria-expanded', String(!!open));
+  }
+
+  function toggleBacklog(open) {
+    if (!els.backlogDrawer || !els.backlogBody) return;
+    const next = open === undefined ? els.backlogBody.classList.contains('hidden') : !!open;
+    els.backlogBody.classList.toggle('hidden', !next);
+    els.backlogDrawer.classList.toggle('open', next);
+    if (els.backlogToggle) els.backlogToggle.setAttribute('aria-expanded', String(next));
+  }
+
+  function toggleVoicePanel() {
+    if (!els.voicePanel || !els.voicePanelToggle) return;
+    const collapsed = els.voicePanel.classList.toggle('collapsed');
+    els.voicePanelToggle.setAttribute('aria-expanded', String(!collapsed));
+  }
 
   // ---------- 页面切换（左侧导航）----------
   const VIEW_NAMES = ['synth', 'train', 'eval', 'material', 'qc', 'annotation'];
@@ -209,29 +329,56 @@
     } catch (e) {
       /* file:// 下可能不支持，忽略 */
     }
+    // 切页数据加载：等 P5 斜切转场（~280ms）扫完再加载，避免 370 行列表渲染卡住动画
+    // 素材页保留旧列表先显示、稍后再静默刷新，兼顾首屏与转场帧率
+    const deferPageLoad = (fn, delay) => {
+      if (document.body.classList.contains('no-motion') || prefersReducedMotion()) { fn(); return; }
+      setTimeout(fn, delay || 300);
+    };
     if (name === 'train') {
-      loadTrainData();
-      refreshTrainStatus();
-      updateDataStatus();
-      resumeDataJob();
+      deferPageLoad(() => {
+        loadTrainData();
+        refreshTrainStatus();
+        updateDataStatus();
+        resumeDataJob();
+      });
     }
-    if (name === 'material') { loadMaterials(); updateDataStatus(); resumeDataJob(); }
-    if (name === 'qc') { loadQcReport(); }
-    if (name === 'annotation') { loadAnnotations(); }
+    if (name === 'material') {
+      deferPageLoad(() => {
+        loadMaterials();
+        updateDataStatus();
+        resumeDataJob();
+      }, 820);
+    }
+    if (name === 'qc') deferPageLoad(loadQcReport);
+    if (name === 'annotation') deferPageLoad(loadAnnotations);
     if (name === 'eval') {
-      loadEvalTarget();
-      loadEvalHistory();
+      deferPageLoad(() => {
+        loadEvalTarget();
+        loadEvalHistory();
+      });
     }
-    if (name === 'synth') { loadRefs(); }
+    if (name === 'synth') deferPageLoad(loadRefs);
     try { document.title = title + ' · AkiBurger Voice'; } catch (e) { /* 忽略 */ }
+    // v4 外壳：body[data-view] 控制对话框/浮层显隐；角色默认 idle；P5 斜切转场
+    document.body.dataset.view = name;
+    setCharacter(name === 'synth' && state.inFlight ? 'thinking' : 'idle');
+    const viewEl = document.getElementById('view-' + name);
+    if (viewEl) {
+      viewEl.classList.remove('view-enter');
+      void viewEl.offsetWidth;
+      viewEl.classList.add('view-enter');
+      setTimeout(() => viewEl.classList.remove('view-enter'), 320);
+    }
+    playPageTransition();
+    openSettings(false);
     // 内容区滚动复位（新布局里滚动容器是 #contentScroll，不再是 window）
+    // 直接复位，不做平滑滚动动画（页面切换动效只保留 P5 斜切）
     const scrollBox = document.getElementById('contentScroll');
     try {
-      if (scrollBox) scrollBox.scrollTo({ top: 0, behavior: 'smooth' });
-      else window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (e) {
-      if (scrollBox) scrollBox.scrollTop = 0; else window.scrollTo(0, 0);
-    }
+      if (scrollBox) scrollBox.scrollTop = 0;
+      else window.scrollTo(0, 0);
+    } catch (e) { /* 忽略 */ }
   }
 
   // ---------- 工具 ----------
@@ -362,6 +509,8 @@
       // 后端返回 {"voices": [...]}，兼容纯数组
       const list = Array.isArray(resp) ? resp : (resp && Array.isArray(resp.voices) ? resp.voices : []);
       state.voices = list;
+      // 音色列表刷新后重算预设里的「音色已失效」标签
+      try { renderPresets(); } catch (e) { /* 预设列表异常不影响音色 */ }
       els.voiceSelect.innerHTML = '';
       if (state.voices.length === 0) {
         const opt = document.createElement('option');
@@ -560,6 +709,7 @@
   function setTone(tone) {
     state.tone = tone;
     els.toneBtns.forEach((b) => b.classList.toggle('active', b.dataset.tone === tone));
+    if (els.speakerTone) els.speakerTone.textContent = tone === 'auto' ? '自动' : tone;
     // 手选后，自动判断横幅只作参考展示，不再强制同步
     // 兼容中文语气值：按钮上是中文名，后端 tone 传中文；'auto' 是自动判断的哨兵值
     if (tone === 'auto') state.tone = 'auto';
@@ -631,6 +781,7 @@
 
     hideError();
     state.inFlight = true;
+    setCharacter('thinking');
     els.synthBtn.disabled = true;
     els.synthBtn.querySelector('.btn-label').textContent = '合成中…';
     els.synthProgress.classList.remove('hidden');
@@ -676,7 +827,17 @@
       // 下载文件名带时间戳，避免每次都叫 full.wav
       els.downloadLink.download = 'voice_' + downloadStamp(new Date()) + '.wav';
       els.resultSection.classList.remove('hidden');
+      els.resultSection.classList.remove('is-new');
+      void els.resultSection.offsetWidth;
+      els.resultSection.classList.add('is-new');
+      setTimeout(() => els.resultSection.classList.remove('is-new'), 320);
+      setCharacter('happy');
       if (els.setRefBtn) els.setRefBtn.disabled = false;
+      // 结果在对话框上方：聚焦+确保可见，避免用户点完看不到
+      try {
+        els.resultSection.scrollIntoView({ block: 'nearest' });
+        els.resultSection.focus({ preventScroll: true });
+      } catch (e) { /* 忽略 */ }
 
       const segs = Array.isArray(res.segments) ? res.segments.length : 0;
       els.resultMeta.textContent =
@@ -1257,6 +1418,7 @@
     );
     if (!ok) return;
     els.importBtn.disabled = true;
+    setCharacter('thinking');
     try {
       await api('/api/data/import', {
         method: 'POST',
@@ -1275,6 +1437,7 @@
     const ok = window.confirm('开始识别 + 清洗？\n这一步比较久（几百段音频大约 10~30 分钟），可以关掉页面让它后台跑。');
     if (!ok) return;
     els.prepareBtn.disabled = true;
+    setCharacter('thinking');
     try {
       await api('/api/data/prepare', { method: 'POST' });
       els.dataJob.classList.remove('hidden');
@@ -1315,9 +1478,11 @@
       }
       setDataJobBusy(j.running);
       if (j.running) {
+        if (j.kind) setCharacter('thinking');
         dataJobTimer = setTimeout(pollDataJob, 2000);
       } else {
         setDataJobBusy(false);
+        if (j.kind) setCharacter(j.error ? 'sad' : 'happy');
         updateDataStatus();
         loadTrainData();
         if (state.view === 'material') loadMaterials();
@@ -1381,8 +1546,13 @@
       }
       // 训练中每 5 秒刷新；结束就不再轮询
       if (running) {
+        if (!ui.trainRunning) { ui.trainRunning = true; setCharacter('thinking'); }
         if (!trainTimer) trainTimer = setInterval(refreshTrainStatus, 5000);
       } else if (trainTimer) {
+        if (ui.trainRunning) {
+          ui.trainRunning = false;
+          setCharacter(st.success === false ? 'sad' : 'happy');
+        }
         clearInterval(trainTimer);
         trainTimer = null;
         loadTrainData();
@@ -1409,6 +1579,7 @@
     if (!ok) return;
     els.trainStartBtn.disabled = true;
     trainStoppedByUser = false;
+    setCharacter('thinking');
     try {
       await api('/api/train/start', {
         method: 'POST',
@@ -1450,6 +1621,7 @@
     els.evalBtn.disabled = true;
     els.evalBtn.textContent = '评测中…';
     els.evalProgress.classList.remove('hidden');
+    setCharacter('thinking');
     if (els.evalResult) els.evalResult.classList.add('hidden');
     els.evalProgressText.textContent = '正在合成测试句并打分，约 1.5 分钟…';
     const progressTimer = setInterval(async () => {
@@ -1464,8 +1636,10 @@
       if (!res || !res.ok || !res.result) throw new Error('评测没有返回结果');
       renderEvalResult(res.result);
       await loadEvalHistory();
+      setCharacter('happy');
     } catch (e) {
       showError('评测失败', String(e.message || e));
+      setCharacter('sad');
     } finally {
       clearInterval(progressTimer);
       els.evalProgress.classList.add('hidden');
@@ -1968,6 +2142,7 @@
     els.historyList.querySelectorAll('.history-item').forEach((n) => n.remove());
     // 「清空历史」按钮：有记录时才显示
     if (els.clearHistoryBtn) els.clearHistoryBtn.hidden = list.length === 0;
+    if (els.backlogCount) els.backlogCount.textContent = String(list.length);
     for (const item of list) {
       els.historyList.appendChild(buildHistoryItem(item));
     }
@@ -2104,10 +2279,16 @@
     els.errorBox.classList.remove('hidden');
     els.errorTitle.textContent = title;
     els.errorDesc.textContent = desc;
-    // 错误框在合成页里，别的页面出错要额外弹提示，否则用户看不到
-    if (state.view && state.view !== 'synth') {
-      showToast(title + '：' + desc);
+    setCharacter('sad');
+    // 合成页：错误面板在对话框上方，聚焦+滚到可见，并额外 toast，避免"点了没反应"
+    if (state.view === 'synth') {
+      try {
+        els.errorBox.scrollIntoView({ block: 'nearest' });
+        els.errorBox.focus({ preventScroll: true });
+      } catch (e) { /* 忽略 */ }
     }
+    // 错误框在合成页里，别的页面出错也要弹提示，否则用户看不到
+    showToast(title + '：' + desc);
   }
   function hideError() {
     els.errorBox.classList.add('hidden');
@@ -2118,7 +2299,10 @@
   els.inLangBtns.forEach((b) => b.addEventListener('click', () => setInputLang(b.dataset.lang)));
   updateLangNote();
 
-  els.toneBtns.forEach((b) => b.addEventListener('click', () => setTone(b.dataset.tone)));
+  els.toneBtns.forEach((b) => b.addEventListener('click', () => {
+    setTone(b.dataset.tone);
+    setCharacter('surprised');
+  }));
 
   els.textInput.addEventListener('input', () => {
     updateMeta();
@@ -2157,6 +2341,38 @@
   if (abA) abA.addEventListener('click', () => playAB('A'));
   if (abB) abB.addEventListener('click', () => playAB('B'));
   renderAB();
+
+  // ---------- v4 外壳：设置 / 声の設定折叠 / BACKLOG 抽屉 ----------
+  if (els.settingsBtn) {
+    els.settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openSettings(els.settingsPanel.classList.contains('hidden'));
+    });
+    document.addEventListener('click', (e) => {
+      if (!els.settingsPanel || els.settingsPanel.classList.contains('hidden')) return;
+      if (els.settingsPanel.contains(e.target) || els.settingsBtn.contains(e.target)) return;
+      openSettings(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') openSettings(false);
+    });
+  }
+  if (els.motionToggle) {
+    els.motionToggle.addEventListener('change', () => {
+      try { localStorage.setItem('abv:motion', els.motionToggle.checked ? '1' : '0'); } catch (e) { /* 忽略 */ }
+      applyDisplaySettings();
+    });
+  }
+  if (els.charToggle) {
+    els.charToggle.addEventListener('change', () => {
+      try { localStorage.setItem('abv:char', els.charToggle.checked ? '1' : '0'); } catch (e) { /* 忽略 */ }
+      applyDisplaySettings();
+      if (els.charToggle.checked) setCharacter('idle');
+    });
+  }
+  if (els.voicePanelToggle) els.voicePanelToggle.addEventListener('click', toggleVoicePanel);
+  if (els.backlogToggle) els.backlogToggle.addEventListener('click', () => toggleBacklog());
+
   els.savePresetBtn.addEventListener('click', saveCurrentPreset);
   if (els.renameModelBtn) els.renameModelBtn.addEventListener('click', renameCurrentModel);
   if (els.evalBtn) els.evalBtn.addEventListener('click', runEvaluation);
@@ -2310,6 +2526,7 @@
       try { localStorage.setItem('abv:voice', els.voiceSelect.value); } catch (e) { /* 忽略 */ }
       // 质检/标注对应的是数据本身，换模型不影响，不要清
       updateModelBadges();
+      setCharacter('surprised');
     }
   });
 
@@ -2318,6 +2535,7 @@
     els.refSelect.addEventListener('change', () => {
       saveRefChoice();
       updateRefHint();
+      setCharacter('surprised');
     });
   }
 
@@ -2382,6 +2600,10 @@
   // ---------- 启动 ----------
   updateMeta();
   renderPresets();
+  applyDisplaySettings();
+  initScenes();
+  preloadScenes();
+  if (els.speakerTone) els.speakerTone.textContent = state.tone === 'auto' ? '自动' : state.tone;
   // 顶部标签切换
   document.querySelectorAll('.side-nav-item[data-view], .flow-step[data-view]').forEach((b) => {
     b.addEventListener('click', () => switchView(b.dataset.view));

@@ -4,10 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AkiBurger Voice · 合成台</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230B0B18'/><circle cx='50' cy='50' r='20' fill='%236366F1'/></svg>">
-<link rel="stylesheet" href="styles.css?v=20261019b">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23EEF6FF'/><circle cx='50' cy='50' r='22' fill='%232F7CF6'/><circle cx='62' cy='38' r='8' fill='%23FF8FC7'/></svg>">
+<link rel="stylesheet" href="styles.css?v=20261020v5">
+<link rel="preload" as="image" href="assets/hero-idle.webp">
 </head>
-<body>
+<body data-view="synth">
 
 <!-- 跳到主内容（无障碍：页面首个可聚焦元素） -->
 <a class="skip-link" href="#main">跳到主内容</a>
@@ -41,7 +42,7 @@
   <symbol id="i-rotate-ccw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
   <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l5 5v13a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v6h8V3"/><path d="M7 21v-8h10v8"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
-  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.4.52.68.95.68H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.4.52.68.95.68H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
   <symbol id="i-square" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
   <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z"/></symbol>
   <symbol id="i-translate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h7"/><path d="M7 3v2c0 4-2.5 8-5 9"/><path d="M5 9c0 3 2 6 5 7"/><path d="m13 20 4-10 4 10"/><path d="M15.5 16h5"/></symbol>
@@ -52,696 +53,687 @@
 </svg>
 
 <!-- ============================================================
-     应用外壳：左侧导航（220px）+ 右侧（顶部状态条 + 内容区 + 页脚）
+     A 式主视觉背景 + 应用外壳
      ============================================================ -->
-<div class="app-shell">
+<div class="stage">
+  <div class="scene-stack" aria-hidden="true">
+    <div class="scene-img" id="sceneA"></div>
+    <div class="scene-img" id="sceneB"></div>
+  </div>
+  <div class="scene-tint" aria-hidden="true"></div>
 
-  <!-- ===== 左侧导航 ===== -->
-  <aside class="sidebar">
+  <!-- ================= 顶部状态条 ================= -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-kicker">AKIBURGER VOICE ／ 音声合成スタジオ</span>
+      <h1 class="topbar-title" id="pageTitle">语音合成</h1>
+    </div>
+    <div class="topbar-right">
+      <span id="engineBadge" class="badge badge-warn" title="声音引擎连接状态">引擎检查中…</span>
+      <span id="translatorBadge" class="badge badge-neutral" title="本地翻译引擎状态">翻译 —</span>
+      <span id="topModelBadge" class="badge badge-neutral" title="当前音色模型">模型 —</span>
+      <span class="badge badge-neutral badge-version">v0.3.0</span>
+      <button type="button" id="settingsBtn" class="icon-btn" aria-label="设置" aria-expanded="false" aria-controls="settingsPanel" title="设置">
+        <svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>
+      </button>
+      <div id="settingsPanel" class="settings-panel hidden" role="dialog" aria-label="设置">
+        <div class="settings-title">设置</div>
+        <label class="settings-row">
+          <span>页面切换动效</span>
+          <span class="switch"><input id="motionToggle" type="checkbox" checked><i class="switch-dot"></i></span>
+        </label>
+        <label class="settings-row">
+          <span>显示主视觉背景</span>
+          <span class="switch"><input id="charToggle" type="checkbox" checked><i class="switch-dot"></i></span>
+        </label>
+        <div class="settings-note">关闭动效后页面切换不再有斜切面板；关闭主视觉后回退到纯色渐变背景，功能不受影响。</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= 左侧竖排大菜单 ================= -->
+  <nav class="main-menu side-nav" aria-label="主导航">
     <div class="brand">
-      <span class="brand-logo" aria-hidden="true"></span>
+      <span class="brand-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg>
+      </span>
       <span class="brand-text">
         <span class="brand-name">AkiBurger Voice</span>
-        <span class="brand-version">v0.2.0</span>
+        <span class="brand-sub">音声合成スタジオ ／ VOICE STUDIO</span>
       </span>
     </div>
+    <div class="menu-cap"><span>MAIN MENU</span><span>／ 主菜单</span></div>
 
-    <nav class="side-nav" aria-label="主导航">
-      <div class="nav-group">
-        <div class="nav-group-title">创作</div>
-        <button type="button" class="side-nav-item flow-step current" data-view="synth"
-                aria-current="page" title="语音合成" aria-label="语音合成">
-          <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-mic"/></svg>
-          <span class="side-nav-label">合成</span>
-          <span class="side-nav-en">Synthesize</span>
-        </button>
+    <button type="button" class="side-nav-item flow-step current" data-view="synth"
+            aria-current="page" title="语音合成" aria-label="语音合成">
+      <span class="menu-num">01</span>
+      <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-mic"/></svg>
+      <span class="side-nav-label">合成</span>
+      <span class="side-nav-en">SYNTH</span>
+    </button>
+    <button type="button" class="side-nav-item flow-step" data-view="material" title="素材：导入音频" aria-label="素材">
+      <span class="menu-num">02</span>
+      <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-music"/></svg>
+      <span class="side-nav-label">素材</span>
+      <span class="side-nav-en">MATERIAL</span>
+    </button>
+    <button type="button" class="side-nav-item flow-step" data-view="qc" title="质检：检查音频/文本问题" aria-label="质检">
+      <span class="menu-num">03</span>
+      <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-search"/></svg>
+      <span class="side-nav-label">质检</span>
+      <span class="side-nav-en">QUALITY</span>
+    </button>
+    <button type="button" class="side-nav-item flow-step" data-view="annotation" title="标注：核对/修改文本" aria-label="标注">
+      <span class="menu-num">04</span>
+      <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-pencil"/></svg>
+      <span class="side-nav-label">标注</span>
+      <span class="side-nav-en">ANNOTATE</span>
+    </button>
+    <button type="button" class="side-nav-item flow-step" data-view="train" title="训练：训练/更新声音模型" aria-label="训练">
+      <span class="menu-num">05</span>
+      <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-cpu"/></svg>
+      <span class="side-nav-label">训练</span>
+      <span class="side-nav-en">TRAIN</span>
+    </button>
+    <button type="button" class="side-nav-item flow-step" data-view="eval" title="评测：给声音打分" aria-label="评测">
+      <span class="menu-num">06</span>
+      <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-chart"/></svg>
+      <span class="side-nav-label">评测</span>
+      <span class="side-nav-en">EVALUATE</span>
+    </button>
+
+    <div class="menu-foot">
+      <div class="menu-status"><span class="menu-status-dot"></span><span id="footEngine">引擎状态未知</span></div>
+      <div class="menu-status menu-status-sub" title="当前音色模型"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-cpu"/></svg><span id="sideModelName">—</span></div>
+      <div class="menu-status menu-status-sub" title="本地翻译引擎状态"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-translate"/></svg><span id="sideTranslator">翻译引擎 —</span></div>
+    </div>
+  </nav>
+
+  <!-- 角色直接画在 A 式主视觉背景里：表情切换 = 背景图 120ms 淡入淡出 -->
+  <!-- ================= 页面切换斜切面板 ================= -->
+  <div class="page-veil" id="pageVeil" aria-hidden="true"><i></i><i></i></div>
+
+  <!-- ================= 主内容区（其它 5 页） ================= -->
+  <main class="stage-main" id="main" tabindex="-1">
+    <div class="content-scroll" id="contentScroll">
+      <div class="page">
+
+        <!-- ==================== 合成页（内容主要浮层在下方） ==================== -->
+        <div class="view" id="view-synth">
+          <header class="page-head synth-head">
+            <h2 class="page-title">语音合成</h2>
+            <p class="page-sub">写一句台词，让雪菜的声音替你开口。</p>
+          </header>
+        </div>
+
+        <!-- ==================== 素材页 ==================== -->
+        <div class="view hidden" id="view-material">
+          <header class="page-head">
+            <h2 class="page-title">素材</h2>
+            <p class="page-sub">第一步：把要用的声音素材导入进来。可以选一个文件夹，扫描后按需导入。</p>
+          </header>
+
+          <section class="card" id="dataSection">
+            <div class="card-head">
+              <h2 class="card-title">训练素材</h2>
+            </div>
+            <div class="train-note">
+              三步：<b>选文件夹 → 导入音频 → 识别 + 清洗</b>。做完这三步才能训练。<br>
+              音频格式支持 ogg / wav / flac / mp3 等，选中的文件夹会全部导入并自动转成训练要的 wav（已导入的会跳过）。
+            </div>
+            <div class="data-row">
+              <button type="button" id="browseBtn" class="btn-secondary btn-sm">
+                <svg class="icon icon-sm" aria-hidden="true"><use href="#i-folder-upload"/></svg>
+                浏览…
+              </button>
+              <input id="sourcePath" class="data-input" type="text"
+                     placeholder="点「浏览…」选文件夹，或直接粘贴路径，例如 D:\我的声音素材\雪菜">
+              <button type="button" id="scanBtn" class="btn-secondary btn-sm">
+                <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
+                扫描
+              </button>
+            </div>
+            <div class="data-hint" id="browseHint"></div>
+            <div class="data-scan-result" id="scanResult">还没扫描。填好路径后点「扫描」看看有多少素材。</div>
+            <div class="data-row">
+              <button type="button" id="importBtn" class="btn-secondary btn-sm">① 导入全部音频</button>
+              <button type="button" id="prepareBtn" class="btn-secondary btn-sm">② 识别 + 清洗</button>
+            </div>
+            <div id="dataJob" class="data-job hidden">
+              <div class="train-stage" id="dataJobStage">—</div>
+              <div class="progress-track"><div id="dataJobBar" class="progress-bar" style="width:0%"></div></div>
+              <pre class="train-log" id="dataJobLog"></pre>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2 class="card-title">已导入的素材</h2>
+              <div class="material-actions">
+                <button type="button" id="materialRestoreBtn" class="btn-secondary btn-sm" title="从回收站找回上次删掉的素材">
+                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-rotate-ccw"/></svg>
+                  恢复删除
+                </button>
+                <button type="button" id="materialRefreshBtn" class="btn-secondary btn-sm">
+                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>
+                  刷新
+                </button>
+                <button type="button" id="materialClearBtn" class="btn-danger-link">
+                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-trash-2"/></svg>
+                  全部清空
+                </button>
+              </div>
+            </div>
+            <div class="material-stats" id="materialStats">正在读取…</div>
+            <div class="material-toolbar">
+              <input id="materialSearch" class="data-input" type="search" placeholder="按文件名搜索…" aria-label="搜索素材">
+              <span class="material-count" id="materialCount"></span>
+            </div>
+            <div class="material-list" id="materialList"></div>
+          </section>
+        </div>
+
+        <!-- ==================== 质检页 ==================== -->
+        <div class="view hidden" id="view-qc">
+          <header class="page-head">
+            <h2 class="page-title">质检</h2>
+            <p class="page-sub">第二步：自动检查素材有没有问题（太短/太长/太小/爆音/静音多/文本乱码），问题音频不建议拿去训练。</p>
+          </header>
+
+          <section class="card">
+            <div class="card-head">
+              <h2 class="card-title">检查结果</h2>
+              <div class="material-actions">
+                <button type="button" id="qcClearBtn" class="btn-danger-link">清空结果</button>
+                <button type="button" id="qcRunBtn" class="btn-secondary btn-sm">
+                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
+                  开始质检
+                </button>
+              </div>
+            </div>
+            <div id="qcSummary" class="qc-summary">还没检查过。点「开始质检」，几百段音频大约十几秒。</div>
+            <div class="eval-filter" id="qcFilter" hidden>
+              <button type="button" class="filter-btn active" data-filter="all">全部</button>
+              <button type="button" class="filter-btn" data-filter="warn">警告</button>
+              <button type="button" class="filter-btn" data-filter="fail">不合格</button>
+            </div>
+            <div class="qc-list" id="qcList"></div>
+          </section>
+        </div>
+
+        <!-- ==================== 标注页 ==================== -->
+        <div class="view hidden" id="view-annotation">
+          <header class="page-head">
+            <h2 class="page-title">标注</h2>
+            <p class="page-sub">第三步：核对每段音频对应的文本。识别错的地方直接改，改完点保存，训练用的就是改后的文本。</p>
+          </header>
+
+          <section class="card">
+            <div class="card-head">
+              <h2 class="card-title">标注列表</h2>
+              <div class="material-actions">
+                <button type="button" id="annClearBtn" class="btn-danger-link">清空列表</button>
+                <button type="button" id="annRefreshBtn" class="btn-secondary btn-sm">
+                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>
+                  刷新
+                </button>
+              </div>
+            </div>
+            <div class="material-stats" id="annStats">正在读取…</div>
+            <div class="eval-filter" id="annFilter" hidden>
+              <button type="button" class="filter-btn active" data-filter="all">全部</button>
+              <button type="button" class="filter-btn" data-filter="short">文本过短</button>
+              <button type="button" class="filter-btn" data-filter="long">文本过长</button>
+            </div>
+            <div class="ann-list" id="annList"></div>
+          </section>
+        </div>
+
+        <!-- ==================== 训练页 ==================== -->
+        <div class="view hidden" id="view-train">
+          <header class="page-head">
+            <h2 class="page-title">训练声音模型</h2>
+            <p class="page-sub">用准备好的音频训练或更新音色模型。训练完成后会自动挂到合成页使用，建议再跑一次评测对比分数。</p>
+          </header>
+
+          <div class="train-stack" id="trainSection">
+            <section class="card">
+              <div class="card-head">
+                <h2 class="card-title">本次训练</h2>
+                <span id="trainBadge" class="badge badge-warn">空闲</span>
+              </div>
+              <div class="train-data" id="trainData">正在检查训练数据…</div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <h2 class="card-title">训练参数</h2>
+                <span class="card-sub">轮数越多越像，但越慢</span>
+              </div>
+              <div class="train-params">
+                <label class="train-param">音色模型轮数
+                  <input id="epochsS2" type="number" value="6" min="1" max="20">
+                </label>
+                <label class="train-param">韵律模型轮数
+                  <input id="epochsS1" type="number" value="8" min="1" max="30">
+                </label>
+                <label class="train-param">音色批量
+                  <input id="batchS2" type="number" value="2" min="1" max="8">
+                </label>
+                <label class="train-param">韵律批量
+                  <input id="batchS1" type="number" value="4" min="1" max="16">
+                </label>
+                <label class="train-param train-check">
+                  <input id="fromScratch" type="checkbox" checked> 从零训练
+                </label>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <h2 class="card-title">高级参数</h2>
+                <span class="card-sub">不确定就保持默认</span>
+              </div>
+              <div class="adv-params">
+                <label class="train-param">音色保存间隔
+                  <input id="saveEveryS2" type="number" value="2" min="1" max="10">
+                </label>
+                <label class="train-param">韵律保存间隔
+                  <input id="saveEveryS1" type="number" value="4" min="1" max="20">
+                </label>
+                <label class="train-param">音色学习率
+                  <input id="lrS2" type="number" value="0" min="0" max="1" step="0.0001" placeholder="0=默认">
+                </label>
+                <label class="train-param">韵律学习率
+                  <input id="lrS1" type="number" value="0" min="0" max="1" step="0.0001" placeholder="0=默认">
+                </label>
+                <label class="train-param train-check">
+                  <input id="autoEval" type="checkbox"> 训完自动评测
+                </label>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-head">
+                <h2 class="card-title">开始训练</h2>
+                <span class="card-sub">训练期间合成会变慢</span>
+              </div>
+              <div class="train-note">轮数越多越像但越慢（音色模型约 2 分钟/轮）。训练期间合成会变慢。<br>「从零训练」会忽略上次训练的中间权重重新开始；取消勾选则在现有权重基础上继续训练。<br>训练完成后会自动挂载新权重，并建议跑一次评测。</div>
+              <div class="train-actions">
+                <button type="button" id="trainStartBtn" class="btn-secondary">
+                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-play"/></svg>
+                  开始训练
+                </button>
+                <button type="button" id="trainStopBtn" class="btn-secondary hidden">
+                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-square"/></svg>
+                  停止训练
+                </button>
+              </div>
+              <div id="trainProgress" class="train-progress hidden">
+                <div class="train-stage" id="trainStage">—</div>
+                <div class="progress-track"><div id="trainBar" class="progress-bar" style="width:0%"></div></div>
+                <div class="train-meta" id="trainMeta"></div>
+                <pre class="train-log" id="trainLog"></pre>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- ==================== 评测页 ==================== -->
+        <div class="view hidden" id="view-eval">
+          <header class="page-head">
+            <h2 class="page-title">评测打分</h2>
+            <p class="page-sub">用声纹模型客观测量"像不像"：固定 11 句测试台词，跟参考音频比相似度。分数越高越像本人。</p>
+          </header>
+
+          <section class="card" id="evalTargetCard">
+            <div class="card-head">
+              <h2 class="card-title">评测对象</h2>
+            </div>
+            <div id="evalTarget" class="eval-target">正在读取…</div>
+            <div class="train-note">
+              评测方法：固定 11 句测试台词（5 句日文 + 3 句中文 + 3 句英文，与训练集无关），
+              跟参考音频比"声纹相似度"。分数只反映"像不像本人"，不评价好不好听。
+            </div>
+          </section>
+
+          <section class="card" id="evalSection">
+            <div class="card-head">
+              <h2 class="card-title">本次评测</h2>
+              <button type="button" id="evalBtn" class="btn-secondary btn-sm" disabled>
+                <svg class="icon icon-sm" aria-hidden="true"><use href="#i-chart"/></svg>
+                开始评测
+              </button>
+            </div>
+            <div class="eval-note">
+              固定 11 句测试台词（5 句日文 + 3 句中文 + 3 句英文，与训练集无关），跟参考音频比声纹相似度。约 1.5 分钟，不影响你正常使用。
+            </div>
+
+            <div id="evalProgress" class="eval-progress hidden">
+              <div class="progress-row"><span class="spinner" aria-hidden="true"></span><span id="evalProgressText">正在评测…</span></div>
+              <div class="progress-track"><div id="evalBar" class="progress-bar" style="width:0%"></div></div>
+            </div>
+
+            <div id="evalResult" class="eval-result hidden">
+              <div class="eval-score-card">
+                <div class="eval-score-big" id="evalScore">—</div>
+                <div class="eval-score-side">
+                  <div class="eval-level" id="evalLevel">—</div>
+                  <div class="eval-model" id="evalModel"></div>
+                </div>
+              </div>
+              <div class="eval-conclusion" id="evalConclusion"></div>
+              <div class="eval-langs" id="evalLangs"></div>
+
+              <div class="eval-legend">
+                <span class="lv-chip lv-good">≥ 0.78 很像</span>
+                <span class="lv-chip lv-ok">0.65 ~ 0.78 像</span>
+                <span class="lv-chip lv-mid">0.50 ~ 0.65 一般</span>
+                <span class="lv-chip lv-bad">&lt; 0.50 不像</span>
+                <span class="eval-legend-note">分数 = 跟参考音频的声纹相似度，1.000 是同一个声音</span>
+              </div>
+              <div class="eval-filter" id="evalFilter" hidden>
+                <button type="button" class="filter-btn active" data-filter="all">全部</button>
+                <button type="button" class="filter-btn" data-filter="bad">只看不够像的</button>
+              </div>
+              <div class="eval-details" id="evalDetails"></div>
+            </div>
+
+            <div class="eval-history-wrap">
+              <div class="card-head">
+                <h3 class="card-title">历史评测</h3>
+              </div>
+              <div id="evalHistory" class="eval-history">
+                <div class="eval-history-empty" id="evalHistoryEmpty">还没有评测记录。点「开始评测」跑第一次。</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- ================= 合成页：顶部引擎未就绪提示 ================= -->
+  <section id="engineDown" class="float-panel engine-panel notice notice-warn hidden" role="status">
+    <svg class="icon notice-icon" aria-hidden="true"><use href="#i-alert-triangle"/></svg>
+    <div class="notice-body">
+      <div class="notice-title">声音引擎还没就绪</div>
+      <div class="notice-desc" id="engineDownDesc">
+        界面已经打开了，但后端服务没连上。<br>
+        试试：启动后端的 <code>app.py</code>，然后回来点 <button type="button" class="linklike" id="retryBtn">重试连接</button>。
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 合成页：底部 galgame 对话框（输入 + 合成 HUD） ================= -->
+  <section class="dialog" aria-label="合成输入区">
+    <div class="dialog-top">
+      <div class="speaker">
+        <span class="speaker-face" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg></span>
+        <b>雪菜</b><span class="speaker-cv">CV</span>
+        <span class="speaker-tone" id="speakerTone">平静</span>
+      </div>
+      <div class="tone-detected" id="toneDetected" hidden>
+        <svg class="icon tone-ai" aria-hidden="true"><use href="#i-cpu"/></svg>
+        <span>自动判断为「<strong id="toneDetectedName">—</strong>」</span>
+        <span class="tone-conf" id="toneDetectedConf"></span>
+      </div>
+      <span class="dialog-hint">写一句台词，让雪菜替你开口。Ctrl + Enter 快速合成。</span>
+    </div>
+
+    <div class="dialog-main">
+      <label class="sr-only" for="textInput">要念的话</label>
+      <textarea id="textInput" class="dialog-text" rows="3"
+        placeholder="在这里输入台词…&#10;长文案会自动切句再拼接，放心写。"
+        spellcheck="false"></textarea>
+      <div class="meta-row">
+        <span id="charCount">0 字</span>
+        <span class="meta-sep">·</span>
+        <span id="durationEst">预计约 0 秒</span>
+        <span class="meta-hint">（生成时长不受精确控制，此为估算）</span>
+        <button type="button" id="clearBtn" class="linklike">清空</button>
+      </div>
+    </div>
+
+    <div class="dialog-controls">
+      <div class="lang-control">
+        <div class="lang-mini-blk">
+          <span class="ctrl-label">输入</span>
+          <div class="lang-group" role="radiogroup" aria-label="输入语言">
+            <button type="button" class="in-lang-btn active" data-lang="zh">中文</button>
+            <button type="button" class="in-lang-btn" data-lang="ja">日文</button>
+            <button type="button" class="in-lang-btn" data-lang="en">英文</button>
+          </div>
+        </div>
+        <span class="lang-arrow" aria-hidden="true">→</span>
+        <div class="lang-mini-blk">
+          <span class="ctrl-label">输出</span>
+          <div class="lang-group" role="radiogroup" aria-label="输出语言">
+            <button type="button" class="lang-btn" data-lang="zh">中文</button>
+            <button type="button" class="lang-btn" data-lang="en">英文</button>
+            <button type="button" class="lang-btn active" data-lang="ja">日文</button>
+          </div>
+        </div>
+        <div class="lang-note" id="langNote">输入中文 → 自动翻译成日文再用训练好的声音读出来。</div>
       </div>
 
-      <div class="nav-group">
-        <div class="nav-group-title">训练流水线</div>
-        <button type="button" class="side-nav-item flow-step" data-view="material" title="素材：导入音频" aria-label="素材">
-          <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-music"/></svg>
-          <span class="side-nav-label">素材</span>
-          <span class="side-nav-en">Materials</span>
-        </button>
-        <button type="button" class="side-nav-item flow-step" data-view="qc" title="质检：检查音频/文本问题" aria-label="质检">
-          <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-search"/></svg>
-          <span class="side-nav-label">质检</span>
-          <span class="side-nav-en">QC</span>
-        </button>
-        <button type="button" class="side-nav-item flow-step" data-view="annotation" title="标注：核对/修改文本" aria-label="标注">
-          <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-pencil"/></svg>
-          <span class="side-nav-label">标注</span>
-          <span class="side-nav-en">Annotate</span>
-        </button>
-        <button type="button" class="side-nav-item flow-step" data-view="train" title="训练：训练/更新声音模型" aria-label="训练">
-          <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-cpu"/></svg>
-          <span class="side-nav-label">训练</span>
-          <span class="side-nav-en">Train</span>
-        </button>
+      <div class="tone-control">
+        <div class="tone-group" role="radiogroup" aria-label="语气">
+          <button type="button" class="tone-btn" data-tone="平静">平静</button>
+          <button type="button" class="tone-btn" data-tone="开心">开心</button>
+          <button type="button" class="tone-btn" data-tone="悲伤">悲伤</button>
+          <button type="button" class="tone-btn" data-tone="生气">生气</button>
+          <button type="button" class="tone-btn" data-tone="惊讶">惊讶</button>
+          <button type="button" class="tone-btn" data-tone="害怕">害怕</button>
+          <button type="button" class="tone-btn" data-tone="auto">自动</button>
+        </div>
+        <div class="tone-note">语气会自动从文本里判断，也可以自己点选。</div>
       </div>
 
-      <div class="nav-group">
-        <div class="nav-group-title">质量</div>
-        <button type="button" class="side-nav-item flow-step" data-view="eval" title="评测：给声音打分" aria-label="评测">
-          <svg class="icon side-nav-icon" aria-hidden="true"><use href="#i-chart"/></svg>
-          <span class="side-nav-label">评测</span>
-          <span class="side-nav-en">Evaluate</span>
+      <div class="cta-control">
+        <button type="button" id="batchToggleBtn" class="btn-secondary btn-batch" disabled
+                title="打开批量合成：每行一句，逐句生成">
+          <svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>
+          <span>批量合成</span>
+        </button>
+        <button type="button" id="synthBtn" class="btn-primary btn-synth" disabled>
+          <svg class="icon" aria-hidden="true"><use href="#i-volume-2"/></svg>
+          <span class="btn-label">合成</span>
+          <span class="btn-hint">Ctrl+Enter</span>
         </button>
       </div>
-    </nav>
+    </div>
 
-    <div class="sidebar-status">
-      <div class="status-row">
-        <span id="engineBadge" class="badge badge-warn" title="声音引擎连接状态">引擎检查中…</span>
+    <!-- 合成进度：紧贴 CTA 上方（不再在首屏外） -->
+    <div id="synthProgress" class="synth-progress hidden" aria-live="polite">
+      <div class="progress-row">
+        <span class="spinner" aria-hidden="true"></span>
+        <span id="progressText">正在合成…</span>
       </div>
-      <div class="status-meta">
-        <span class="status-label"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-cpu"/></svg>当前模型</span>
-        <span class="status-value" id="sideModelName" title="当前音色模型">—</span>
+      <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+    </div>
+  </section>
+
+  <!-- ================= 合成页：错误提示（对话框上方浮层） ================= -->
+  <section id="errorBox" class="float-panel error-panel notice notice-danger hidden" aria-live="assertive" tabindex="-1">
+    <svg class="icon notice-icon" aria-hidden="true"><use href="#i-alert-triangle"/></svg>
+    <div class="notice-body">
+      <div class="notice-title" id="errorTitle">合成失败</div>
+      <div class="notice-desc" id="errorDesc"></div>
+    </div>
+    <button type="button" id="retrySynthBtn" class="btn-secondary btn-sm float-panel-close" title="再来一次">
+      <svg class="icon icon-sm" aria-hidden="true"><use href="#i-rotate-ccw"/></svg>
+      再来一次
+    </button>
+  </section>
+
+  <!-- ================= 合成页：LAST TAKE 结果面板 ================= -->
+  <section id="resultSection" class="float-panel result-panel hidden" tabindex="-1">
+    <div class="result-head">
+      <div class="result-title">
+        <svg class="icon" aria-hidden="true"><use href="#i-waveform"/></svg>
+        <span>LAST TAKE<small>上次结果</small></span>
       </div>
-      <div class="status-translator" id="sideTranslator" title="本地翻译引擎状态"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-translate"/></svg>翻译引擎 —</div>
+      <div class="result-actions">
+        <a id="downloadLink" class="btn-secondary btn-sm" download>
+          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-download"/></svg>
+          下载
+        </a>
+        <button type="button" id="setRefBtn" class="btn-secondary btn-sm" disabled title="把这次合成结果设为参考音频">
+          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-star"/></svg>
+          设为参考
+        </button>
+        <button type="button" id="savePresetBtn" class="btn-secondary btn-sm" title="把当前参数存成预设">
+          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-save"/></svg>
+          存成预设
+        </button>
+      </div>
+    </div>
+    <div class="translated-box" id="translatedBox" hidden>
+      <div class="translated-label"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-translate"/></svg>翻译后实际朗读的文本（可以核对对不对）</div>
+      <div class="translated-text" id="translatedText"></div>
+    </div>
+    <div class="result-main">
+      <audio id="resultAudio" controls preload="metadata"></audio>
+      <div class="result-meta" id="resultMeta"></div>
+    </div>
+    <canvas id="waveCanvas" class="waveform" width="1000" height="80"></canvas>
+    <div id="abCompare" class="ab-compare hidden">
+      <span class="ab-label">A/B 对比</span>
+      <button type="button" id="abAaBtn" class="ab-btn" title="试听 A 版本" aria-label="试听 A 版本">A</button>
+      <button type="button" id="abBbBtn" class="ab-btn" title="试听 B 版本" aria-label="试听 B 版本">B</button>
+      <span id="abHint" class="ab-hint"></span>
+    </div>
+  </section>
+
+  <!-- ================= 合成页：批量合成面板 ================= -->
+  <section id="batchPanel" class="float-panel batch-panel hidden" aria-label="批量合成">
+    <div class="batch-head">
+      <div class="batch-title"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>批量合成</div>
+      <button type="button" id="batchStopBtn" class="btn-secondary btn-sm hidden">
+        <svg class="icon icon-sm" aria-hidden="true"><use href="#i-square"/></svg>
+        停止
+      </button>
+    </div>
+    <div class="batch-note">每行一句，逐句合成。行首可写「语气｜台词」指定这一句的语气，不写就用下面的默认语气。</div>
+    <textarea id="batchInput" class="text-input batch-input" rows="4"
+      placeholder="第一句台词&#10;第二句台词&#10;开心｜第三句台词"></textarea>
+    <div class="batch-controls">
+      <span id="batchCount" class="meta-hint">共 0 句</span>
+      <div class="batch-controls-right">
+        <span class="meta-hint">默认语气：</span>
+        <select id="batchDefaultTone" class="mini-select">
+          <option value="auto" selected>自动</option>
+          <option value="平静">平静</option>
+          <option value="开心">开心</option>
+          <option value="悲伤">悲伤</option>
+          <option value="生气">生气</option>
+          <option value="惊讶">惊讶</option>
+          <option value="害怕">害怕</option>
+        </select>
+        <button type="button" id="batchStartBtn" class="btn-secondary">
+          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-play"/></svg>
+          开始逐句合成
+        </button>
+      </div>
+    </div>
+    <div id="batchResults" class="batch-results hidden"></div>
+  </section>
+
+  <!-- ================= 合成页：右侧「声の設定」 ================= -->
+  <aside class="voice-panel" id="voicePanel" aria-label="声の设定">
+    <button type="button" id="voicePanelToggle" class="voice-panel-toggle" aria-expanded="true" aria-controls="voicePanelBody" title="收起/展开声の設定">
+      <span class="voice-panel-cap"><svg class="icon" aria-hidden="true"><use href="#i-volume-2"/></svg>声の設定<small>VOICE SETUP</small></span>
+      <svg class="icon icon-sm voice-panel-chev" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+    </button>
+    <div class="voice-panel-body" id="voicePanelBody">
+      <section class="voice-card">
+        <label class="field-label" for="voiceSelect">当前音色</label>
+        <select id="voiceSelect" class="model-select" disabled>
+          <option value="">加载中…</option>
+        </select>
+        <div class="model-actions">
+          <button type="button" id="previewBtn" class="btn-secondary btn-sm" disabled title="试听这个模型的声音">
+            <svg class="icon icon-sm" aria-hidden="true"><use href="#i-play"/></svg>
+            试听
+          </button>
+          <button type="button" id="renameModelBtn" class="btn-secondary btn-sm" disabled title="给这个模型起个名字">
+            <svg class="icon icon-sm" aria-hidden="true"><use href="#i-pencil"/></svg>
+            改名
+          </button>
+        </div>
+        <label class="field-label" for="refSelect">参考音频</label>
+        <select id="refSelect" class="model-select" disabled>
+          <option value="">自动（按语气挑选）</option>
+        </select>
+        <div class="field-hint" id="refHint">自动：按语气从素材里挑参考；指定：固定用这条参考。</div>
+        <audio id="previewAudio" class="model-audio" controls preload="none" hidden></audio>
+      </section>
+
+      <section class="voice-card">
+        <button type="button" id="advToggleBtn" class="adv-toggle" aria-expanded="false">
+          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+          <span>音质微调（合成不满意时用）</span>
+        </button>
+        <div id="advPanel" class="adv-panel hidden">
+          <div class="adv-row">
+            <label class="adv-label" for="tempRange">稳定度</label>
+            <input type="range" id="tempRange" min="0.5" max="1.2" step="0.05" value="0.9">
+            <span id="tempValue" class="adv-val">0.90</span>
+          </div>
+          <div class="adv-row">
+            <label class="adv-label" for="seedInput">随机种子</label>
+            <input type="number" id="seedInput" class="adv-seed" value="-1" min="-1" max="2147483647">
+            <button type="button" id="rerollBtn" class="btn-secondary btn-mini">
+              <svg class="icon icon-sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>
+              换一个
+            </button>
+          </div>
+          <div class="adv-note">-1 = 每次随机；-1 之外填固定数字 = 结果可复现。</div>
+        </div>
+      </section>
+
+      <section class="voice-card">
+        <div class="field-label">预设</div>
+        <div id="presetArea" class="preset-area">
+          <div class="preset-empty" id="presetEmpty">还没有预设。合成出满意的结果后，点「存成预设」。</div>
+          <div id="presetList" class="preset-list hidden"></div>
+        </div>
+      </section>
+
+      <div class="voice-panel-foot">本地运行 · 声音与文字不会离开这台电脑</div>
     </div>
   </aside>
 
-  <!-- ===== 右侧主区域 ===== -->
-  <div class="app-main">
-
-    <!-- 顶部状态条 -->
-    <header class="topbar">
-      <div class="topbar-left">
-        <h1 class="topbar-title" id="pageTitle">语音合成</h1>
+  <!-- ================= 合成页：左下 BACKLOG 抽屉 ================= -->
+  <aside class="backlog" id="backlogDrawer" aria-label="对话记录">
+    <div class="backlog-body hidden" id="backlogBody">
+      <div class="backlog-head">
+        <span class="backlog-sub">最近生成</span>
+        <button type="button" id="clearHistoryBtn" class="btn-danger-link" hidden>
+          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-trash-2"/></svg>
+          清空历史
+        </button>
       </div>
-      <div class="topbar-right">
-        <span class="badge badge-neutral" id="topModelBadge" title="当前音色模型"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-cpu"/></svg><span>模型 —</span></span>
-        <span class="badge badge-neutral badge-optional" id="translatorBadge" title="本地翻译引擎状态"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-translate"/></svg><span>翻译 —</span></span>
-        <span class="badge badge-neutral badge-optional" title="版本"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-info"/></svg><span>v0.2.0</span></span>
+      <div id="historyList" class="history-list">
+        <div class="history-empty" id="historyEmpty">还没有合成记录。合成的音频会出现在这里。</div>
       </div>
-    </header>
+    </div>
+    <button type="button" id="backlogToggle" class="backlog-toggle" aria-expanded="false" aria-controls="backlogBody" title="展开/收起对话记录">
+      <span class="backlog-cap"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-clock"/></svg>BACKLOG<small>对话记录</small></span>
+      <span class="backlog-count" id="backlogCount">0</span>
+      <svg class="icon icon-sm backlog-chev" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+    </button>
+  </aside>
 
-    <!-- 内容区（内部滚动，一次只看一页） -->
-    <main class="content" id="main" tabindex="-1">
-      <div class="content-scroll" id="contentScroll">
-        <div class="page">
-
-          <!-- ==================== 合成页 ==================== -->
-          <div class="view" id="view-synth">
-
-            <header class="page-head">
-              <h2 class="page-title">语音合成</h2>
-              <p class="page-sub">写文字 → 选语言和语气 → 生成音频。这是日常使用的主页面。</p>
-            </header>
-
-            <!-- 引擎未就绪提示（默认隐藏） -->
-            <section id="engineDown" class="notice notice-warn hidden">
-              <svg class="icon notice-icon" aria-hidden="true"><use href="#i-alert-triangle"/></svg>
-              <div class="notice-body">
-                <div class="notice-title">声音引擎还没就绪</div>
-                <div class="notice-desc" id="engineDownDesc">
-                  界面已经打开了，但后端服务没连上。<br>
-                  试试：启动后端的 <code>app.py</code>，然后回来点 <button type="button" class="linklike" id="retryBtn">重试连接</button>。
-                </div>
-              </div>
-            </section>
-
-            <!-- 两栏：左输入流程 / 右参数与预设 -->
-            <div class="synth-grid">
-
-              <!-- ---------- 左栏 ---------- -->
-              <div class="synth-main">
-
-                <!-- 语言 -->
-                <section class="card">
-                  <div class="lang-row">
-                    <div class="lang-blk">
-                      <div class="field-label">我输入的语言</div>
-                      <div class="lang-group" role="radiogroup" aria-label="输入语言">
-                        <button type="button" class="in-lang-btn active" data-lang="zh">中文</button>
-                        <button type="button" class="in-lang-btn" data-lang="ja">日文</button>
-                        <button type="button" class="in-lang-btn" data-lang="en">英文</button>
-                      </div>
-                    </div>
-                    <div class="lang-arrow" aria-hidden="true">→</div>
-                    <div class="lang-blk">
-                      <div class="field-label">输出的语言</div>
-                      <div class="lang-group" role="radiogroup" aria-label="输出语言">
-                        <button type="button" class="lang-btn" data-lang="zh">中文</button>
-                        <button type="button" class="lang-btn" data-lang="en">英文</button>
-                        <button type="button" class="lang-btn active" data-lang="ja">日文</button>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="lang-note" id="langNote">输入中文 → 自动翻译成日文再用训练好的声音读出来。</div>
-                </section>
-
-                <!-- 台词输入 -->
-                <section class="card">
-                  <label class="field-label" for="textInput">要念的话</label>
-                  <textarea id="textInput" class="text-input" rows="7"
-                    placeholder="在这里输入台词…&#10;&#10;长文案会自动切句再拼接，放心写。"
-                    spellcheck="false"></textarea>
-                  <div class="meta-row">
-                    <span id="charCount">0 字</span>
-                    <span class="meta-sep">·</span>
-                    <span id="durationEst">预计约 0 秒</span>
-                    <span class="meta-hint">（生成时长不受精确控制，此为估算）</span>
-                    <button type="button" id="clearBtn" class="linklike">清空</button>
-                  </div>
-                </section>
-
-                <!-- 语气 -->
-                <section class="card">
-                  <div class="field-label">语气</div>
-                  <div class="tone-detected" id="toneDetected" hidden>
-                    <svg class="icon tone-ai" aria-hidden="true"><use href="#i-cpu"/></svg>
-                    <span>自动判断为「<strong id="toneDetectedName">—</strong>」</span>
-                    <span class="tone-conf" id="toneDetectedConf"></span>
-                  </div>
-                  <div class="tone-group" role="radiogroup" aria-label="语气">
-                    <button type="button" class="tone-btn" data-tone="平静">平静</button>
-                    <button type="button" class="tone-btn" data-tone="开心">开心</button>
-                    <button type="button" class="tone-btn" data-tone="悲伤">悲伤</button>
-                    <button type="button" class="tone-btn" data-tone="生气">生气</button>
-                    <button type="button" class="tone-btn" data-tone="惊讶">惊讶</button>
-                    <button type="button" class="tone-btn" data-tone="害怕">害怕</button>
-                    <button type="button" class="tone-btn" data-tone="auto">自动</button>
-                  </div>
-                  <div class="tone-note">
-                    语气会自动从文本里判断，也可以自己点选。参考音频由软件在背后自动挑选，你不用管。
-                  </div>
-                </section>
-
-                <!-- 合成按钮 + 批量合成入口 -->
-                <section class="card synth-action-card">
-                  <div class="synth-actions">
-                    <button type="button" id="synthBtn" class="btn-primary btn-synth" disabled>
-                      <svg class="icon" aria-hidden="true"><use href="#i-volume-2"/></svg>
-                      <span class="btn-label">合成</span>
-                      <span class="btn-hint">Ctrl+Enter</span>
-                    </button>
-                    <button type="button" id="batchToggleBtn" class="btn-secondary btn-batch" disabled
-                            title="打开批量合成：每行一句，逐句生成">
-                      <svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>
-                      <span>批量合成</span>
-                    </button>
-                  </div>
-                </section>
-
-                <!-- 合成中状态 -->
-                <section id="synthProgress" class="card hidden" aria-live="polite">
-                  <div class="progress-row">
-                    <span class="spinner" aria-hidden="true"></span>
-                    <span id="progressText">正在合成…</span>
-                  </div>
-                  <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-                </section>
-
-                <!-- 批量合成面板（默认收起） -->
-                <section id="batchPanel" class="card hidden">
-                  <label class="field-label" for="batchInput">批量合成</label>
-                  <div class="batch-note">每行一句，逐句合成。行首可写「语气｜台词」指定这一句的语气，不写就用下面的默认语气。</div>
-                  <textarea id="batchInput" class="text-input batch-input" rows="6"
-                    placeholder="第一句台词&#10;第二句台词&#10;开心｜第三句台词"></textarea>
-                  <div class="batch-controls">
-                    <span id="batchCount" class="meta-hint">共 0 句</span>
-                    <div class="batch-controls-right">
-                      <span class="meta-hint">默认语气：</span>
-                      <select id="batchDefaultTone" class="mini-select">
-                        <option value="auto" selected>自动</option>
-                        <option value="平静">平静</option>
-                        <option value="开心">开心</option>
-                        <option value="悲伤">悲伤</option>
-                        <option value="生气">生气</option>
-                        <option value="惊讶">惊讶</option>
-                        <option value="害怕">害怕</option>
-                      </select>
-                      <button type="button" id="batchStartBtn" class="btn-secondary">
-                        <svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>
-                        开始逐句合成
-                      </button>
-                      <button type="button" id="batchStopBtn" class="btn-secondary hidden">
-                        <svg class="icon" aria-hidden="true"><use href="#i-square"/></svg>
-                        停止
-                      </button>
-                    </div>
-                  </div>
-                  <div id="batchResults" class="batch-results hidden"></div>
-                </section>
-
-              </div>
-
-              <!-- ---------- 右栏 ---------- -->
-              <aside class="synth-side">
-
-                <!-- 模型 -->
-                <section class="card">
-                  <div class="card-head">
-                    <h3 class="card-title">模型</h3>
-                  </div>
-                  <label class="field-label" for="voiceSelect">当前音色</label>
-                  <select id="voiceSelect" class="model-select" disabled>
-                    <option value="">加载中…</option>
-                  </select>
-                  <div class="model-actions">
-                    <button type="button" id="previewBtn" class="btn-secondary btn-sm" disabled title="试听这个模型的声音">
-                      <svg class="icon icon-sm" aria-hidden="true"><use href="#i-play"/></svg>
-                      试听
-                    </button>
-                    <button type="button" id="renameModelBtn" class="btn-secondary btn-sm" disabled title="给这个模型起个名字（比如「我的声音」）">
-                      <svg class="icon icon-sm" aria-hidden="true"><use href="#i-pencil"/></svg>
-                      改名
-                    </button>
-                  </div>
-                  <label class="field-label" for="refSelect">参考音频</label>
-                  <select id="refSelect" class="model-select" disabled>
-                    <option value="">自动（按语气挑选）</option>
-                  </select>
-                  <div class="field-hint" id="refHint">自动：按语气从素材里挑参考；指定：固定用这条参考。</div>
-                  <audio id="previewAudio" class="model-audio" controls preload="none" hidden></audio>
-                </section>
-
-                <!-- 音质微调（默认收起） -->
-                <section class="card">
-                  <div class="adv-head">
-                    <button type="button" id="advToggleBtn" class="adv-toggle">
-                      <svg class="icon" aria-hidden="true"><use href="#i-chevron-down"/></svg>
-                      <span class="adv-toggle-text">音质微调（合成不满意时用）</span>
-                    </button>
-                  </div>
-                  <div id="advPanel" class="adv-panel hidden">
-                    <div class="adv-row">
-                      <label class="adv-label" for="tempRange">稳定度</label>
-                      <input type="range" id="tempRange" min="0.5" max="1.2" step="0.05" value="0.9">
-                      <span id="tempValue" class="adv-val">0.90</span>
-                    </div>
-                    <div class="adv-note">数值越低越稳（不容易翻车），越高越有起伏。效果不好时先试 0.8~0.9。</div>
-
-                    <div class="adv-row">
-                      <label class="adv-label" for="seedInput">随机种子</label>
-                      <input type="number" id="seedInput" class="adv-seed" value="-1" min="-1" max="2147483647">
-                      <button type="button" id="rerollBtn" class="btn-secondary btn-mini">
-                        <svg class="icon icon-sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>
-                        换一个
-                      </button>
-                    </div>
-                    <div class="adv-note">-1 = 每次随机。填固定数字 = 结果可复现（找到满意的那次就把数字记下来）。</div>
-                  </div>
-                </section>
-
-                <!-- 预设（存在浏览器本地） -->
-                <section class="card">
-                  <div class="field-label">预设</div>
-                  <div id="presetArea" class="preset-area">
-                    <div class="preset-empty" id="presetEmpty">还没有预设。合成出满意的结果后，点「存成预设」。</div>
-                    <div id="presetList" class="preset-list hidden"></div>
-                  </div>
-                </section>
-
-              </aside>
-            </div>
-
-            <!-- 错误提示 -->
-            <section id="errorBox" class="notice notice-danger hidden" aria-live="assertive">
-              <svg class="icon notice-icon" aria-hidden="true"><use href="#i-alert-triangle"/></svg>
-              <div class="notice-body">
-                <div class="notice-title" id="errorTitle">合成失败</div>
-                <div class="notice-desc" id="errorDesc"></div>
-              </div>
-            </section>
-
-            <!-- 结果（全宽） -->
-            <section id="resultSection" class="card result-card hidden">
-              <div class="card-head">
-                <h2 class="card-title">结果</h2>
-                <div class="result-actions">
-                  <a id="downloadLink" class="btn-secondary" download>
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-download"/></svg>
-                    下载
-                  </a>
-                  <button type="button" id="setRefBtn" class="btn-secondary" disabled title="把这次合成结果设为参考音频">
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-star"/></svg>
-                    设为参考
-                  </button>
-                  <button type="button" id="savePresetBtn" class="btn-secondary">
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-save"/></svg>
-                    存成预设
-                  </button>
-                  <button type="button" id="retrySynthBtn" class="btn-secondary">
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-rotate-ccw"/></svg>
-                    再来一次
-                  </button>
-                </div>
-              </div>
-              <div class="translated-box" id="translatedBox" hidden>
-                <div class="translated-label"><svg class="icon icon-sm" aria-hidden="true"><use href="#i-translate"/></svg>翻译后实际朗读的文本（可以核对对不对）</div>
-                <div class="translated-text" id="translatedText"></div>
-              </div>
-              <div class="result-main">
-                <audio id="resultAudio" controls preload="metadata"></audio>
-              </div>
-              <canvas id="waveCanvas" class="waveform" width="1000" height="80"></canvas>
-              <div id="abCompare" class="ab-compare hidden">
-                <span class="ab-label">A/B 对比</span>
-                <button type="button" id="abAaBtn" class="ab-btn" title="试听 A 版本" aria-label="试听 A 版本">A</button>
-                <button type="button" id="abBbBtn" class="ab-btn" title="试听 B 版本" aria-label="试听 B 版本">B</button>
-                <span id="abHint" class="ab-hint"></span>
-              </div>
-              <div class="result-meta" id="resultMeta"></div>
-            </section>
-
-            <!-- 历史（全宽） -->
-            <section class="card">
-              <div class="card-head">
-                <h2 class="card-title">历史记录</h2>
-                <button type="button" id="clearHistoryBtn" class="btn-danger-link" hidden>
-                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-trash-2"/></svg>
-                  清空历史
-                </button>
-              </div>
-              <div id="historyList" class="history-list">
-                <div class="history-empty" id="historyEmpty">还没有合成记录。合成的音频会出现在这里。</div>
-              </div>
-            </section>
-
-          </div>
-
-          <!-- ==================== 素材页 ==================== -->
-          <div class="view hidden" id="view-material">
-
-            <header class="page-head">
-              <h2 class="page-title">素材</h2>
-              <p class="page-sub">第一步：把要用的声音素材导入进来。可以选一个文件夹，扫描后按需导入。</p>
-            </header>
-
-            <!-- 训练素材（提交音频） -->
-            <section class="card" id="dataSection">
-              <div class="card-head">
-                <h2 class="card-title">训练素材</h2>
-              </div>
-              <div class="train-note">
-                三步：<b>选文件夹 → 导入音频 → 识别 + 清洗</b>。做完这三步才能训练。<br>
-                音频格式支持 ogg / wav / flac / mp3 等，选中的文件夹会全部导入并自动转成训练要的 wav（已导入的会跳过）。
-              </div>
-              <div class="data-row">
-                <button type="button" id="browseBtn" class="btn-secondary btn-sm">
-                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-folder-upload"/></svg>
-                  浏览…
-                </button>
-                <input id="sourcePath" class="data-input" type="text"
-                       placeholder="点「浏览…」选文件夹，或直接粘贴路径，例如 C:\Users\123\Desktop\白2\人声\雪菜">
-                <button type="button" id="scanBtn" class="btn-secondary btn-sm">
-                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
-                  扫描
-                </button>
-              </div>
-              <div class="data-hint" id="browseHint"></div>
-              <div class="data-scan-result" id="scanResult">还没扫描。填好路径后点「扫描」看看有多少素材。</div>
-              <div class="data-row">
-                <button type="button" id="importBtn" class="btn-secondary btn-sm">① 导入全部音频</button>
-                <button type="button" id="prepareBtn" class="btn-secondary btn-sm">② 识别 + 清洗</button>
-              </div>
-              <div id="dataJob" class="data-job hidden">
-                <div class="train-stage" id="dataJobStage">—</div>
-                <div class="progress-track"><div id="dataJobBar" class="progress-bar" style="width:0%"></div></div>
-                <pre class="train-log" id="dataJobLog"></pre>
-              </div>
-            </section>
-
-            <section class="card">
-              <div class="card-head">
-                <h2 class="card-title">已导入的素材</h2>
-                <div class="material-actions">
-                  <button type="button" id="materialRestoreBtn" class="btn-secondary btn-sm" title="从回收站找回上次删掉的素材">
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-rotate-ccw"/></svg>
-                    恢复删除
-                  </button>
-                  <button type="button" id="materialRefreshBtn" class="btn-secondary btn-sm">
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>
-                    刷新
-                  </button>
-                  <button type="button" id="materialClearBtn" class="btn-danger-link">
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-trash-2"/></svg>
-                    全部清空
-                  </button>
-                </div>
-              </div>
-              <div class="material-stats" id="materialStats">正在读取…</div>
-              <div class="material-toolbar">
-                <input id="materialSearch" class="data-input" type="search" placeholder="按文件名搜索…" aria-label="搜索素材">
-                <span class="material-count" id="materialCount"></span>
-              </div>
-              <div class="material-list" id="materialList"></div>
-            </section>
-
-          </div>
-
-          <!-- ==================== 质检页 ==================== -->
-          <div class="view hidden" id="view-qc">
-
-            <header class="page-head">
-              <h2 class="page-title">质检</h2>
-              <p class="page-sub">第二步：自动检查素材有没有问题（太短/太长/太小/爆音/静音多/文本乱码），问题音频不建议拿去训练。</p>
-            </header>
-
-            <section class="card">
-              <div class="card-head">
-                <h2 class="card-title">检查结果</h2>
-                <div class="material-actions">
-                  <button type="button" id="qcClearBtn" class="btn-danger-link">清空结果</button>
-                  <button type="button" id="qcRunBtn" class="btn-secondary btn-sm">
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
-                    开始质检
-                  </button>
-                </div>
-              </div>
-              <div id="qcSummary" class="qc-summary">还没检查过。点「开始质检」，几百段音频大约十几秒。</div>
-              <div class="eval-filter" id="qcFilter" hidden>
-                <button type="button" class="filter-btn active" data-filter="all">全部</button>
-                <button type="button" class="filter-btn" data-filter="warn">警告</button>
-                <button type="button" class="filter-btn" data-filter="fail">不合格</button>
-              </div>
-              <div class="qc-list" id="qcList"></div>
-            </section>
-
-          </div>
-
-          <!-- ==================== 标注页 ==================== -->
-          <div class="view hidden" id="view-annotation">
-
-            <header class="page-head">
-              <h2 class="page-title">标注</h2>
-              <p class="page-sub">第三步：核对每段音频对应的文本。识别错的地方直接改，改完点保存，训练用的就是改后的文本。</p>
-            </header>
-
-            <section class="card">
-              <div class="card-head">
-                <h2 class="card-title">标注列表</h2>
-                <div class="material-actions">
-                  <button type="button" id="annClearBtn" class="btn-danger-link">清空列表</button>
-                  <button type="button" id="annRefreshBtn" class="btn-secondary btn-sm">
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-refresh-cw"/></svg>
-                    刷新
-                  </button>
-                </div>
-              </div>
-              <div class="material-stats" id="annStats">正在读取…</div>
-              <div class="eval-filter" id="annFilter" hidden>
-                <button type="button" class="filter-btn active" data-filter="all">全部</button>
-                <button type="button" class="filter-btn" data-filter="short">文本过短</button>
-                <button type="button" class="filter-btn" data-filter="long">文本过长</button>
-              </div>
-              <div class="ann-list" id="annList"></div>
-            </section>
-
-          </div>
-
-          <!-- ==================== 训练页 ==================== -->
-          <div class="view hidden" id="view-train">
-
-            <header class="page-head">
-              <h2 class="page-title">训练声音模型</h2>
-              <p class="page-sub">用准备好的音频训练或更新音色模型。训练完成后会自动挂到合成页使用，建议再跑一次评测对比分数。</p>
-            </header>
-
-            <div class="train-stack" id="trainSection">
-
-              <!-- 训练数据 -->
-              <section class="card">
-                <div class="card-head">
-                  <h2 class="card-title">本次训练</h2>
-                  <span id="trainBadge" class="badge badge-warn">空闲</span>
-                </div>
-                <div class="train-data" id="trainData">正在检查训练数据…</div>
-              </section>
-
-              <!-- 训练参数 -->
-              <section class="card">
-                <div class="card-head">
-                  <h2 class="card-title">训练参数</h2>
-                  <span class="card-sub">轮数越多越像，但越慢</span>
-                </div>
-                <div class="train-params">
-                  <label class="train-param">音色模型轮数
-                    <input id="epochsS2" type="number" value="6" min="1" max="20">
-                  </label>
-                  <label class="train-param">韵律模型轮数
-                    <input id="epochsS1" type="number" value="8" min="1" max="30">
-                  </label>
-                  <label class="train-param">音色批量
-                    <input id="batchS2" type="number" value="2" min="1" max="8">
-                  </label>
-                  <label class="train-param">韵律批量
-                    <input id="batchS1" type="number" value="4" min="1" max="16">
-                  </label>
-                  <label class="train-param train-check">
-                    <input id="fromScratch" type="checkbox" checked> 从零训练
-                  </label>
-                </div>
-              </section>
-
-              <!-- 高级参数 -->
-              <section class="card">
-                <div class="card-head">
-                  <h2 class="card-title">高级参数</h2>
-                  <span class="card-sub">不确定就保持默认</span>
-                </div>
-                <div class="adv-params">
-                  <label class="train-param">音色保存间隔
-                    <input id="saveEveryS2" type="number" value="2" min="1" max="10">
-                  </label>
-                  <label class="train-param">韵律保存间隔
-                    <input id="saveEveryS1" type="number" value="4" min="1" max="20">
-                  </label>
-                  <label class="train-param">音色学习率
-                    <input id="lrS2" type="number" value="0" min="0" max="1" step="0.0001" placeholder="0=默认">
-                  </label>
-                  <label class="train-param">韵律学习率
-                    <input id="lrS1" type="number" value="0" min="0" max="1" step="0.0001" placeholder="0=默认">
-                  </label>
-                  <label class="train-param train-check">
-                    <input id="autoEval" type="checkbox"> 训完自动评测
-                  </label>
-                </div>
-              </section>
-
-              <!-- 开始训练 + 进度 -->
-              <section class="card">
-                <div class="card-head">
-                  <h2 class="card-title">开始训练</h2>
-                  <span class="card-sub">训练期间合成会变慢</span>
-                </div>
-                <div class="train-note">轮数越多越像但越慢（音色模型约 2 分钟/轮）。训练期间合成会变慢。<br>「从零训练」会忽略上次训练的中间权重重新开始；取消勾选则在现有权重基础上继续训练。<br>训练完成后会自动挂载新权重，并建议跑一次评测。</div>
-                <div class="train-actions">
-                  <button type="button" id="trainStartBtn" class="btn-secondary">
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-play"/></svg>
-                    开始训练
-                  </button>
-                  <button type="button" id="trainStopBtn" class="btn-secondary hidden">
-                    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-square"/></svg>
-                    停止训练
-                  </button>
-                </div>
-                <div id="trainProgress" class="train-progress hidden">
-                  <div class="train-stage" id="trainStage">—</div>
-                  <div class="progress-track"><div id="trainBar" class="progress-bar" style="width:0%"></div></div>
-                  <div class="train-meta" id="trainMeta"></div>
-                  <pre class="train-log" id="trainLog"></pre>
-                </div>
-              </section>
-
-            </div>
-
-          </div>
-
-          <!-- ==================== 评测页 ==================== -->
-          <div class="view hidden" id="view-eval">
-
-            <header class="page-head">
-              <h2 class="page-title">评测打分</h2>
-              <p class="page-sub">用声纹模型客观测量"像不像"：自动合成测试台词，跟参考音频比相似度。分数越高越像本人。</p>
-            </header>
-
-            <!-- 评测对象 -->
-            <section class="card" id="evalTargetCard">
-              <div class="card-head">
-                <h2 class="card-title">评测对象</h2>
-              </div>
-              <div id="evalTarget" class="eval-target">正在读取…</div>
-              <div class="train-note">
-                评测方法：自动合成 5 句日文（取自训练数据）+ 3 句中文 + 3 句英文，
-                跟参考音频比"声纹相似度"。分数只反映"像不像本人"，不评价好不好听。
-              </div>
-            </section>
-
-            <!-- 本次评测 -->
-            <section class="card" id="evalSection">
-              <div class="card-head">
-                <h2 class="card-title">本次评测</h2>
-                <button type="button" id="evalBtn" class="btn-secondary btn-sm" disabled>
-                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-chart"/></svg>
-                  开始评测
-                </button>
-              </div>
-              <div class="eval-note">
-                用声纹模型客观测量"像不像"：自动合成 11 句测试台词（5 句日文 + 3 句中文 + 3 句英文），
-                跟参考音频比声纹相似度。约 1.5 分钟，不影响你正常使用。
-              </div>
-
-              <div id="evalProgress" class="eval-progress hidden">
-                <span class="spinner" aria-hidden="true"></span>
-                <span id="evalProgressText">正在评测…</span>
-              </div>
-
-              <div id="evalResult" class="eval-result hidden">
-                <div class="eval-score-card">
-                  <div class="eval-score-big" id="evalScore">—</div>
-                  <div class="eval-score-side">
-                    <div class="eval-level" id="evalLevel">—</div>
-                    <div class="eval-model" id="evalModel"></div>
-                  </div>
-                </div>
-                <div class="eval-conclusion" id="evalConclusion"></div>
-                <div class="eval-langs" id="evalLangs"></div>
-
-                <div class="eval-legend">
-                  <span class="lv-chip lv-good">≥ 0.78 很像</span>
-                  <span class="lv-chip lv-ok">0.65 ~ 0.78 像</span>
-                  <span class="lv-chip lv-mid">0.50 ~ 0.65 一般</span>
-                  <span class="lv-chip lv-bad">&lt; 0.50 不像</span>
-                  <span class="eval-legend-note">分数 = 跟参考音频的声纹相似度，1.000 是同一个声音</span>
-                </div>
-                <div class="eval-filter" id="evalFilter" hidden>
-                  <button type="button" class="filter-btn active" data-filter="all">全部</button>
-                  <button type="button" class="filter-btn" data-filter="bad">只看不够像的</button>
-                </div>
-                <div class="eval-details" id="evalDetails"></div>
-              </div>
-
-              <div class="eval-history-wrap">
-                <div class="card-head">
-                  <h3 class="card-title">历史评测</h3>
-                </div>
-                <div id="evalHistory" class="eval-history">
-                  <div class="eval-history-empty" id="evalHistoryEmpty">还没有评测记录。点「开始评测」跑第一次。</div>
-                </div>
-              </div>
-            </section>
-
-          </div>
-
-        </div>
-      </div>
-    </main>
-
-    <!-- 页脚 -->
-    <footer class="app-footer">
-      <span>本地运行，你的声音和文字不会离开这台电脑。</span>
-      <span class="foot-sep">·</span>
-      <span id="footEngine">引擎状态未知</span>
-    </footer>
-
+  <!-- 页脚状态（极简，右下角） -->
+  <div class="stage-foot" aria-hidden="true">
+    <span>STATIC ／ P5 TRANSITION</span>
+    <span>LOCAL · OFFLINE · PRIVATE</span>
   </div>
 </div>
 
-<script src="app.js?v=20261019b"></script>
+<script src="app.js?v=20261020v5"></script>
 </body>
 </html>

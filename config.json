@@ -1,6 +1,6 @@
 {
   "app_name": "AkiBurger Voice",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "engine": {
     "api_url": "http://127.0.0.1:9880",
     "health_path": "/docs",
