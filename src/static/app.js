@@ -1884,15 +1884,21 @@
     try {
       const d = await api('/api/annotation/list');
       annLastData = d;
-      state.annCount = d.count;
+      const available = d.available != null ? d.available : d.count;
+      const deleted = d.deleted || 0;
+      state.annCount = available;
       const st = d.stats || {};
       els.annStats.textContent =
-        `共 ${d.count} 条标注` +
+        `共 ${available} 条可用标注` +
         (st.empty ? ` · 缺文本 ${st.empty}` : '') +
         (st.short ? ` · 过短 ${st.short}` : '') +
         (st.long ? ` · 过长 ${st.long}` : '') +
-        (st.missing_audio ? ` · 音频缺失 ${st.missing_audio}` : '');
-      if (els.annFilter) els.annFilter.hidden = false;
+        (deleted ? ` · 已删除 ${deleted} 条（不参与标注与训练）` : '');
+      if (els.annFilter) {
+        els.annFilter.hidden = false;
+        const delBtn = els.annFilter.querySelector('.filter-btn[data-filter="deleted"]');
+        if (delBtn) delBtn.hidden = deleted === 0;
+      }
       renderAnnotations(state.annFilter || 'all');
     } catch (e) {
       els.annStats.textContent = '读取失败：' + (e.message || e);
@@ -1907,12 +1913,14 @@
         b.classList.toggle('active', b.dataset.filter === filter);
       });
     }
-    let entries = annLastData.entries || [];
+    const all = annLastData.entries || [];
+    const usable = all.filter((e) => e.existed !== false);
+    let entries = filter === 'deleted' ? all.filter((e) => e.existed === false) : usable;
     if (filter === 'short') entries = entries.filter((e) => e.text_len > 0 && e.text_len < 4);
     if (filter === 'long') entries = entries.filter((e) => e.text_len > 60);
     const query = ((els.annSearch && els.annSearch.value) || '').trim().toLowerCase();
     if (query) entries = entries.filter((e) => String(e.name || '').toLowerCase().includes(query));
-    if (els.annCount) els.annCount.textContent = query ? `匹配 ${entries.length} / 共 ${(annLastData.entries || []).length} 条` : '';
+    if (els.annCount) els.annCount.textContent = query ? `匹配 ${entries.length} / 共 ${usable.length} 条可用` : '';
     if (!entries.length) {
       const empty = document.createElement('div');
       empty.className = 'eval-detail-empty';
@@ -1922,7 +1930,7 @@
     }
     for (const e of entries) {
       const row = document.createElement('div');
-      row.className = 'ann-row';
+      row.className = 'ann-row' + (e.existed === false ? ' is-deleted' : '');
       const play = document.createElement('button');
       play.type = 'button';
       play.className = 'history-play';
@@ -1931,14 +1939,18 @@
       play.addEventListener('click', () => audioPlay('/api/material/audio?name=' + encodeURIComponent(e.name)));
       const meta = document.createElement('div');
       meta.className = 'ann-meta';
-      meta.textContent = e.name + (e.duration != null ? ` · ${e.duration}s` : '');
+      meta.textContent = e.name +
+        (e.duration != null ? ` · ${e.duration}s` : '') +
+        (e.existed === false ? ' · 音频已删除，恢复后才能标注' : '');
       const input = document.createElement('input');
       input.className = 'ann-input';
       input.type = 'text';
       input.value = e.text || '';
+      input.disabled = e.existed === false;
       const save = document.createElement('button');
       save.className = 'btn-secondary btn-sm';
       save.textContent = '保存';
+      save.disabled = e.existed === false;
       save.addEventListener('click', async () => {
         save.disabled = true;
         try {

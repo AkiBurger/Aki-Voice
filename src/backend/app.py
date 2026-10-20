@@ -1372,9 +1372,25 @@ def qc_report():
 
 @app.get("/api/annotation/list")
 def annotation_list():
-    """标注列表（音频 + 文本）。"""
+    """标注列表（音频 + 文本）。音频已删除的条目单独计数，默认不进入标注/训练。"""
     data = annotate.load_entries()
-    data["stats"] = annotate.stats()
+    entries = data.get("entries") or []
+    available = sum(1 for e in entries if e.get("existed"))
+    deleted = len(entries) - available
+    stats = {"empty": 0, "short": 0, "long": 0, "missing_audio": deleted}
+    for e in entries:
+        if not e.get("existed"):
+            continue
+        n = e.get("text_len") or 0
+        if n == 0:
+            stats["empty"] += 1
+        elif n < 4:
+            stats["short"] += 1
+        elif n > 60:
+            stats["long"] += 1
+    data["available"] = available
+    data["deleted"] = deleted
+    data["stats"] = stats
     return data
 
 
