@@ -417,12 +417,12 @@ a { color: var(--primary-deep); }
 }
 body:not([data-view="synth"]) .custom-char { display: none; }
 
-/* ---- 左下角「教程」胶囊 + 面板（胶囊在 BACKLOG 锚点正上方，两者都能点） ---- */
+/* ---- 左下角「教程」胶囊 + 面板（固定在窗口左下角，面板向上展开） ---- */
 .tutorial-pill {
   position: fixed;
-  left: var(--content-left, 258px);
-  bottom: calc(100vh - var(--dialog-top, 660px) + 62px);
-  z-index: 39;
+  left: 16px;
+  bottom: 16px;
+  z-index: 59;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -443,12 +443,13 @@ body:not([data-view="synth"]) .custom-char { display: none; }
 
 .tutorial-panel {
   position: fixed;
-  left: var(--content-left, 258px);
-  top: 84px;
-  bottom: calc(100vh - var(--dialog-top, 660px) + 112px);
-  z-index: 50;
+  left: 16px;
+  bottom: 60px;
+  top: auto;
+  z-index: 58;
   width: 380px;
-  max-width: calc(100vw - var(--content-left, 258px) - 32px);
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 90px);
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-l);
@@ -525,15 +526,16 @@ body:not([data-view="synth"]) .custom-char { display: none; }
 }
 .t-step-go:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
 
-/* 紧凑模式：教程面板占满宽度抽屉 */
+/* 紧凑模式：教程面板向左下角收拢，占满剩余宽度 */
 body.compact-ui .tutorial-pill {
-  left: 78px;
-  bottom: calc(100vh - var(--dialog-top, 620px) + 10px);
+  left: 10px;
+  bottom: 10px;
 }
 body.compact-ui .tutorial-panel {
-  left: 78px; right: 10px;
-  top: 76px;
-  bottom: calc(100vh - var(--dialog-top, 620px) + 56px);
+  left: 10px; right: 10px;
+  top: auto;
+  bottom: 54px;
+  max-height: min(62vh, 460px);
   width: auto; max-width: none;
 }
 
@@ -686,6 +688,7 @@ body.compact-ui .tutorial-panel {
 
 .menu-foot {
   margin-top: auto;
+  margin-bottom: 54px;
   display: flex;
   flex-direction: column;
   gap: 5px;
