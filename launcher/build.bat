@@ -21,8 +21,10 @@ set "BG_IDLE=assets\bg-idle.jpg"
 set "BG_THINKING=assets\bg-thinking.jpg"
 set "BG_HAPPY=assets\bg-happy.jpg"
 set "BG_SAD=assets\bg-sad.jpg"
+set "APP_ICON=assets\app.ico"
+set "APP_ICON_PNG=assets\app-icon.png"
 
-for %%F in ("%MANIFEST%" "%FONT%" "%BG_IDLE%" "%BG_THINKING%" "%BG_HAPPY%" "%BG_SAD%") do (
+for %%F in ("%MANIFEST%" "%FONT%" "%BG_IDLE%" "%BG_THINKING%" "%BG_HAPPY%" "%BG_SAD%" "%APP_ICON%" "%APP_ICON_PNG%") do (
     if not exist "%%~F" (
         echo [ERROR] missing resource: %%~F
         if /i "%%~xF"==".gz" echo Regenerate it with: python assets\make-font-subset.py
@@ -36,11 +38,14 @@ echo Compiling launcher.cs ...
  /out:"..\AkiBurgerVoice.exe" ^
  /r:System.Windows.Forms.dll /r:System.Drawing.dll ^
  "/win32manifest:%MANIFEST%" ^
+ "/win32icon:%APP_ICON%" ^
  "/resource:%BG_IDLE%,AkiBurgerVoice.bg.idle.jpg" ^
  "/resource:%BG_THINKING%,AkiBurgerVoice.bg.thinking.jpg" ^
  "/resource:%BG_HAPPY%,AkiBurgerVoice.bg.happy.jpg" ^
  "/resource:%BG_SAD%,AkiBurgerVoice.bg.sad.jpg" ^
  "/resource:%FONT%,AkiBurgerVoice.ZCOOL.ttf.gz" ^
+ "/resource:%APP_ICON%,AkiBurgerVoice.app.ico" ^
+ "/resource:%APP_ICON_PNG%,AkiBurgerVoice.appicon.png" ^
  launcher.cs
 if errorlevel 1 (
     echo [ERROR] compile failed

@@ -113,6 +113,7 @@ namespace AkiBurgerVoice
         string fontNote = "";
 
         readonly Image[] bgImages = new Image[4];
+        Image appIconImg;
         CharState curChar = CharState.Idle;
         CharState prevChar = CharState.Idle;
         float charFadeStart = -1f;
@@ -166,6 +167,13 @@ namespace AkiBurgerVoice
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint
                 | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             DoubleBuffered = true;
+
+            try
+            {
+                using (Stream icoRes = Assembly.GetExecutingAssembly().GetManifestResourceStream("AkiBurgerVoice.app.ico"))
+                    if (icoRes != null) Icon = new Icon(icoRes);
+            }
+            catch { }
 
             AutoScaleMode = AutoScaleMode.Dpi;
             physicalScale = PhysicalDpiScale(IntPtr.Zero);
@@ -505,6 +513,29 @@ namespace AkiBurgerVoice
                 catch { }
             }
             return FontFamily.GenericSansSerif.Name;
+        }
+
+        Image EnsureAppIcon()
+        {
+            if (appIconImg != null) return appIconImg;
+            try
+            {
+                using (Stream res = Assembly.GetExecutingAssembly().GetManifestResourceStream("AkiBurgerVoice.appicon.png"))
+                {
+                    if (res != null)
+                    {
+                        using (MemoryStream ms = new MemoryStream())
+                        {
+                            res.CopyTo(ms);
+                            ms.Position = 0;
+                            using (Image src = Image.FromStream(ms))
+                                appIconImg = new Bitmap(src, new Size(128, 128));
+                        }
+                    }
+                }
+            }
+            catch { }
+            return appIconImg;
         }
 
         Image EnsureBg(CharState state)
@@ -1462,9 +1493,18 @@ namespace AkiBurgerVoice
 
         void DrawTitleBlock(Graphics g, float a)
         {
-            DrawShadowedText(g, "AkiBurger Voice", fontTitle, 56f, 40f, A(WHITE, a), a);
-            DrawText(g, "こえを、つくる。", fontSans13, A(WHITE, 0.92f * a), 58f, 104f);
-            DrawText(g, versionText, fontSans95, A(WHITE, 0.72f * a), 58f, 126f);
+            Image ic = EnsureAppIcon();
+            if (ic != null)
+            {
+                float ix = 56f, iy = 40f, isz = 64f;
+                // 图标下面垫一层很淡的白色，避免深色图标贴樱花背景糊在一起
+                using (SolidBrush halo = new SolidBrush(Color.FromArgb((int)(70 * a), 255, 255, 255)))
+                    g.FillEllipse(halo, ix - 4f, iy - 4f, isz + 8f, isz + 8f);
+                g.DrawImage(ic, new RectangleF(ix, iy, isz, isz));
+            }
+            DrawShadowedText(g, "AkiBurger Voice", fontTitle, 132f, 38f, A(WHITE, a), a);
+            DrawText(g, "こえを、つくる。", fontSans13, A(WHITE, 0.92f * a), 132f, 104f);
+            DrawText(g, versionText, fontSans95, A(WHITE, 0.72f * a), 132f, 126f);
         }
 
         void DrawMenu(Graphics g, float a)
