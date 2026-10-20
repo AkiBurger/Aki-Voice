@@ -63,6 +63,10 @@
   --ease-inout: cubic-bezier(.5, .06, .25, 1);
   --grad-cta: linear-gradient(100deg, #1D4ED8 0%, #5B4BE0 54%, #D6408C 100%);
   --grad-active: linear-gradient(100deg, rgba(111, 184, 255, .98), rgba(255, 143, 199, .96));
+
+  /* 声の設定面板几何（响应式会更新；设置面板据此定位到它的左侧，避免重叠） */
+  --voice-r: 28px;
+  --voice-w: 302px;
 }
 
 /* ---------------- 基础 ---------------- */
@@ -281,12 +285,14 @@ a { color: var(--primary-deep); }
 .icon-btn:hover { background: #fff; transform: translateY(-1px); }
 .icon-btn:active { transform: translateY(1px); }
 
-/* 设置面板 */
+/* 设置面板（宽屏浮层：定位到声の設定左侧，二者不相交；紧凑模式走抽屉见后文） */
 .settings-panel {
-  position: absolute;
+  position: fixed;
   top: 66px;
-  right: 22px;
-  width: 244px;
+  right: calc(var(--voice-r) + var(--voice-w) + 16px);
+  width: 300px;
+  max-height: calc(var(--dialog-top, 660px) - 92px);
+  overflow-y: auto;
   padding: 14px;
   border-radius: var(--radius-m);
   border: 1px solid var(--glass-line);
@@ -346,6 +352,189 @@ a { color: var(--primary-deep); }
   color: var(--ink-faint);
   font-size: 9.5px;
   line-height: 1.6;
+}
+
+/* ---- 设置面板：自定义图片 ---- */
+.settings-sub {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--ink-soft);
+}
+.theme-slot {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .7);
+}
+.theme-thumb {
+  flex-shrink: 0;
+  width: 96px; height: 54px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background-color: #E9F1FC;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.theme-thumb span {
+  font-size: 9.5px;
+  color: var(--ink-faint);
+  letter-spacing: .06em;
+}
+.theme-thumb.has-image span { display: none; }
+.theme-slot-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.theme-slot-name { font-size: 11px; font-weight: 700; color: var(--ink); }
+.theme-slot-desc { font-size: 9.5px; color: var(--ink-faint); line-height: 1.45; }
+.theme-slot-actions { display: flex; gap: 6px; margin-top: auto; }
+.theme-slot-actions .btn-secondary { height: 24px; padding: 0 8px; font-size: 9.5px; }
+.theme-uploading { opacity: .55; pointer-events: none; }
+#themeNote { font-size: 9.5px; }
+#themeNote.unsupported { color: var(--warn); border-top-color: rgba(224, 154, 0, .5); }
+
+/* ---- 自定义角色立绘：背景之上、面板之下，不遮任何交互 ---- */
+.custom-char {
+  position: fixed;
+  right: calc(var(--voice-r) + var(--voice-w) + 20px);
+  bottom: 0;
+  height: 82vh;
+  max-width: 46vw;
+  object-fit: contain;
+  object-position: right bottom;
+  z-index: 2;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 8%, #000 82%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 8%, #000 82%, transparent 100%);
+}
+body:not([data-view="synth"]) .custom-char { display: none; }
+
+/* ---- 左下角「教程」胶囊 + 面板（胶囊在 BACKLOG 锚点正上方，两者都能点） ---- */
+.tutorial-pill {
+  position: fixed;
+  left: var(--content-left, 258px);
+  bottom: calc(100vh - var(--dialog-top, 660px) + 62px);
+  z-index: 39;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-line);
+  background: var(--glass-strong);
+  color: var(--primary-deep);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+}
+.tutorial-pill:hover { background: #fff; }
+.tutorial-pill .icon { color: var(--accent-deep); }
+
+.tutorial-panel {
+  position: fixed;
+  left: var(--content-left, 258px);
+  top: 84px;
+  bottom: calc(100vh - var(--dialog-top, 660px) + 112px);
+  z-index: 50;
+  width: 380px;
+  max-width: calc(100vw - var(--content-left, 258px) - 32px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--glass-line);
+  background: linear-gradient(180deg, rgba(255, 253, 255, .94) 0%, rgba(255, 247, 252, .9) 100%);
+  box-shadow: var(--shadow-dialog);
+  overflow: hidden;
+}
+.tutorial-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, .8);
+  background: rgba(255, 255, 255, .5);
+}
+.tutorial-title { font-family: var(--font-display); font-size: 15px; letter-spacing: .08em; color: var(--primary-deep); }
+.tutorial-close {
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .8);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.tutorial-close:hover { color: var(--danger); border-color: var(--danger); }
+.tutorial-body { padding: 10px 12px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+
+.tutorial-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .7);
+}
+.tutorial-step.is-current { border-color: var(--primary); background: var(--primary-soft); }
+.tutorial-step.is-done { opacity: .72; }
+.t-step-num {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  margin-top: 1px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.tutorial-step.is-current .t-step-num { background: var(--primary); border-color: var(--primary); color: #fff; }
+.tutorial-step.is-done .t-step-num { background: var(--ok); border-color: var(--ok); color: #fff; }
+.t-step-body { flex: 1 1 auto; min-width: 0; }
+.t-step-title { font-size: 12px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.t-step-mark { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: var(--radius-pill); }
+.tutorial-step.is-current .t-step-mark { background: var(--primary); color: #fff; }
+.tutorial-step.is-done .t-step-mark { background: rgba(31, 168, 108, .14); color: var(--ok); }
+.t-step-desc { font-size: 10.5px; color: var(--ink-soft); line-height: 1.5; margin-top: 2px; }
+.t-step-go {
+  flex-shrink: 0;
+  align-self: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  color: var(--primary-deep);
+  font-size: 9.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.t-step-go:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* 紧凑模式：教程面板占满宽度抽屉 */
+body.compact-ui .tutorial-pill {
+  left: 78px;
+  bottom: calc(100vh - var(--dialog-top, 620px) + 10px);
+}
+body.compact-ui .tutorial-panel {
+  left: 78px; right: 10px;
+  top: 76px;
+  bottom: calc(100vh - var(--dialog-top, 620px) + 56px);
+  width: auto; max-width: none;
 }
 
 /* ============================================================
@@ -1929,6 +2118,7 @@ body.compact-ui .float-panel { max-height: calc(var(--dialog-top, 620px) - 104px
 /* ============================================================
    响应式   ============================================================ */
 @media (max-width: 1320px) {
+  :root { --voice-r: 20px; --voice-w: 282px; }
   .voice-panel { width: min(282px, calc(100vw - 40px)); right: 20px; }
   .dialog { left: 238px; right: 20px; }
   .float-panel { left: 238px; width: 520px; }
@@ -1939,6 +2129,7 @@ body.compact-ui .float-panel { max-height: calc(var(--dialog-top, 620px) - 104px
 }
 
 @media (max-width: 1150px) {
+  :root { --voice-r: 16px; --voice-w: 266px; }
   .main-menu { width: 204px; padding: 16px 10px 12px; }
   .brand-name { font-size: 18px; }
   .brand-sub { letter-spacing: .1em; }
@@ -1960,6 +2151,7 @@ body.compact-ui .float-panel { max-height: calc(var(--dialog-top, 620px) - 104px
 }
 
 @media (max-width: 1000px) {
+  :root { --voice-r: 12px; --voice-w: 252px; }
   .main-menu { width: 76px; padding: 14px 8px 12px; align-items: center; }
   .brand { padding: 0 0 12px; justify-content: center; }
   .brand-text { display: none; }
@@ -2035,6 +2227,7 @@ body.no-motion .skip-link { transition-duration: 1ms; }
 
 /* 关闭主视觉后回退到纯色渐变背景（设置里的「显示主视觉背景」） */
 body.no-char .scene-stack { display: none; }
+body.no-char .custom-char { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .page-veil { display: none; }

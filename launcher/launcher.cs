@@ -934,7 +934,7 @@ namespace AkiBurgerVoice
 
                 // ---------- 4. 就绪 ----------
                 SetStage("准备就绪");
-                Log("启动流程完成，等待开始游戏");
+                Log("启动流程完成，等待开始创作");
             }
             catch (Exception ex)
             {
@@ -1471,7 +1471,7 @@ namespace AkiBurgerVoice
         {
             for (int i = 0; i < 3; i++)
             {
-                string label = i == 0 ? "开始游戏" : (i == 1 ? "设置" : "退出");
+                string label = i == 0 ? "开始创作" : (i == 1 ? "设置" : "退出");
                 bool enabled = i != 0 || LaunchEnabled;
                 bool hover = hoverMenu == i;
                 float x = 56f + (hover ? 4f : 0f);

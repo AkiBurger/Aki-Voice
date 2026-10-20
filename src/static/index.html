@@ -62,6 +62,9 @@
   </div>
   <div class="scene-tint" aria-hidden="true"></div>
 
+  <!-- 自定义角色立绘（设置面板上传后叠加，z 在背景之上、面板之下） -->
+  <img id="customChar" class="custom-char" alt="自定义角色立绘" hidden>
+
   <!-- ================= 顶部状态条 ================= -->
   <header class="topbar">
     <div class="topbar-left">
@@ -93,6 +96,33 @@
           <span class="switch"><input id="charToggle" type="checkbox" checked><i class="switch-dot"></i></span>
         </label>
         <div class="settings-note">关闭动效后页面切换不再有斜切面板；关闭主视觉后回退到纯色渐变背景，功能不受影响。</div>
+
+        <div class="settings-sub">自定义图片</div>
+        <div class="theme-slot">
+          <div class="theme-thumb" id="bgThumb" aria-hidden="true"><span>默认</span></div>
+          <div class="theme-slot-info">
+            <div class="theme-slot-name">背景图</div>
+            <div class="theme-slot-desc" id="bgDesc">还没上传。上传后替换主视觉背景，表情切换会暂停。</div>
+            <div class="theme-slot-actions">
+              <button type="button" class="btn-secondary btn-sm" id="bgUploadBtn">上传</button>
+              <button type="button" class="btn-secondary btn-sm" id="bgResetBtn" disabled>恢复默认</button>
+            </div>
+          </div>
+        </div>
+        <div class="theme-slot">
+          <div class="theme-thumb" id="charThumb" aria-hidden="true"><span>默认</span></div>
+          <div class="theme-slot-info">
+            <div class="theme-slot-name">角色立绘</div>
+            <div class="theme-slot-desc" id="charDesc">还没上传。上传后背景换成纯色底图，右侧立绘换成你的图。</div>
+            <div class="theme-slot-actions">
+              <button type="button" class="btn-secondary btn-sm" id="charUploadBtn">上传</button>
+              <button type="button" class="btn-secondary btn-sm" id="charResetBtn" disabled>恢复默认</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-note" id="themeNote" hidden></div>
+        <input type="file" id="bgFileInput" accept="image/png,image/jpeg,image/webp" class="hidden">
+        <input type="file" id="charFileInput" accept="image/png,image/jpeg,image/webp" class="hidden">
       </div>
     </div>
   </header>
@@ -743,6 +773,21 @@
 
   <!-- 抽屉遮罩（≤860px 的 声の設定 / 设置 抽屉共用） -->
   <div class="drawer-scrim hidden" id="drawerScrim" aria-hidden="true"></div>
+
+  <!-- ================= 左下角「教程」入口与面板 ================= -->
+  <button type="button" id="tutorialBtn" class="tutorial-pill" aria-haspopup="dialog" aria-expanded="false" aria-controls="tutorialPanel">
+    <svg class="icon icon-sm" aria-hidden="true"><use href="#i-info"/></svg>
+    <span>教程</span>
+  </button>
+  <aside id="tutorialPanel" class="tutorial-panel hidden" role="dialog" aria-label="教程">
+    <div class="tutorial-head">
+      <span class="tutorial-title">教程</span>
+      <button type="button" id="tutorialCloseBtn" class="tutorial-close" aria-label="关闭教程">
+        <svg class="icon icon-sm" aria-hidden="true"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="tutorial-body" id="tutorialBody"></div>
+  </aside>
 
   <!-- 页脚状态（极简，右下角） -->
   <div class="stage-foot" aria-hidden="true">

@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -859,6 +859,103 @@ def delete_ref(req: RefDeleteRequest):
     except Exception:
         pass
     return {"ok": True, "deleted": stem}
+
+
+# ============================================================
+# 自定义主题图片：创作者上传背景/角色立绘（data/theme）
+# ============================================================
+THEME_DIR = DATA_DIR / "theme"
+# 槽位 → 最长边上限（等比缩放）
+THEME_SLOTS = {"bg": 2560, "char": 1600}
+THEME_MAX_BYTES = 12 * 1024 * 1024        # 12MB
+
+
+def _theme_path(slot: str) -> Path:
+    """槽位 → data/theme/<slot>.webp。slot 白名单，防路径穿越。"""
+    if slot not in THEME_SLOTS:
+        raise HTTPException(status_code=400, detail="槽位不合法（只支持 bg / char）")
+    return THEME_DIR / f"{slot}.webp"
+
+
+@app.post("/api/theme/upload")
+async def theme_upload(slot: str, file: UploadFile = File(...)):
+    """
+    上传自定义主题图。slot=bg（背景，最长边 2560）或 char（角色立绘，最长边 1600，保留透明）。
+    只接受 png/jpeg/webp，≤12MB；PIL 校验能打开，转 webp q90 存 data/theme/。
+    """
+    _theme_path(slot)          # 白名单校验
+    try:
+        content = await file.read()
+    except Exception:
+        raise HTTPException(status_code=400, detail="读不到上传的文件，重新选一次")
+    if not content:
+        raise HTTPException(status_code=400, detail="文件是空的，重新选一张")
+    if len(content) > THEME_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="图片太大了（超过 12MB），换张小一点的")
+
+    from PIL import Image
+    try:
+        img = Image.open(io.BytesIO(content))
+        img.load()                 # 强制解码，损坏的图在这里报错
+        fmt = (img.format or "").upper()
+    except Exception:
+        raise HTTPException(status_code=400, detail="图片打不开或已损坏，换一张试试")
+    if fmt not in ("PNG", "JPEG", "WEBP"):
+        raise HTTPException(status_code=400, detail=f"只支持 png/jpeg/webp 格式，当前是 {fmt or '未知格式'}")
+
+    # 保留透明通道（webp 支持 RGBA；char 槽必须有）
+    if img.mode not in ("RGB", "RGBA"):
+        has_alpha = img.mode in ("LA", "PA") or "transparency" in img.info
+        img = img.convert("RGBA" if has_alpha else "RGB")
+
+    limit = THEME_SLOTS[slot]
+    if max(img.size) > limit:
+        img.thumbnail((limit, limit))   # 等比缩小
+
+    THEME_DIR.mkdir(parents=True, exist_ok=True)
+    dst = THEME_DIR / f"{slot}.webp"
+    try:
+        img.save(dst, "WEBP", quality=90)
+    except Exception:
+        raise HTTPException(status_code=400, detail="图片转码失败，换一张试试")
+
+    ts = int(dst.stat().st_mtime)
+    return {"ok": True, "slot": slot, "url": f"/api/theme/file/{slot}?v={ts}"}
+
+
+@app.get("/api/theme")
+def theme_status():
+    """当前自定义主题状态：每个槽位要么有图（url + 更新时间），要么 null。"""
+    out = {}
+    for slot in THEME_SLOTS:
+        p = THEME_DIR / f"{slot}.webp"
+        if p.exists():
+            ts = int(p.stat().st_mtime)
+            out[slot] = {
+                "url": f"/api/theme/file/{slot}?v={ts}",
+                "updated_at": datetime.fromtimestamp(ts).isoformat(timespec="seconds"),
+            }
+        else:
+            out[slot] = None
+    return out
+
+
+@app.get("/api/theme/file/{slot}")
+def theme_file(slot: str):
+    """取主题图文件。no-cache，让前端 ?v= 时间戳刷新生效；不存在 404。"""
+    p = _theme_path(slot)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="这个槽位还没有上传图片")
+    return FileResponse(str(p), media_type="image/webp",
+                        headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+
+@app.delete("/api/theme/{slot}")
+def theme_delete(slot: str):
+    """删除某槽位的自定义主题图（恢复默认）。"""
+    p = _theme_path(slot)
+    p.unlink(missing_ok=True)
+    return {"ok": True, "slot": slot}
 
 
 @app.post("/api/synthesize")

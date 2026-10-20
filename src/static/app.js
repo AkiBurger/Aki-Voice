@@ -37,6 +37,7 @@
     abResults: [],            // 最近两次合成结果（A/B 对比）
     qcFilter: 'all',
     annFilter: 'all',
+    annCount: 0,              // 标注条数（教程步骤判断用）
     datasetSnapshot: '',      // 上次的数据指纹，变了就清空质检/标注结果
     currentHistoryUrl: null,
     temperature: 0.9,         // 音质微调：越低越稳
@@ -44,6 +45,11 @@
     inFlight: false,          // 合成请求进行中（防重复点击 / Ctrl+Enter / 换种子重合成）
     evalRunning: false,       // 评测进行中（期间禁用合成 CTA）
     synthIdleWait: false,     // 批量停止后等待引擎空闲
+    // 自定义图片（后端 /api/theme；不支持时静默降级）
+    theme: { bg: null, char: null },
+    themeSupported: true,
+    themeLoaded: false,
+    tutorialData: { wav: 0, clean: 0, models: 0, evals: 0, history: 0 },
   };
 
   // ---------- 元素 ----------
@@ -196,6 +202,24 @@
     annSearch: $('annSearch'),
     annCount: $('annCount'),
     evalBar: $('evalBar'),
+    // 自定义图片
+    bgThumb: $('bgThumb'),
+    charThumb: $('charThumb'),
+    bgDesc: $('bgDesc'),
+    charDesc: $('charDesc'),
+    bgUploadBtn: $('bgUploadBtn'),
+    bgResetBtn: $('bgResetBtn'),
+    charUploadBtn: $('charUploadBtn'),
+    charResetBtn: $('charResetBtn'),
+    bgFileInput: $('bgFileInput'),
+    charFileInput: $('charFileInput'),
+    themeNote: $('themeNote'),
+    customChar: $('customChar'),
+    // 教程
+    tutorialBtn: $('tutorialBtn'),
+    tutorialPanel: $('tutorialPanel'),
+    tutorialCloseBtn: $('tutorialCloseBtn'),
+    tutorialBody: $('tutorialBody'),
   };
 
   // ---------- A 式主视觉背景（角色在右、左侧留白；表情 = 背景 120ms 交叉淡入） ----------
@@ -240,6 +264,8 @@
 
   // 表情切换 = 背景图交叉淡入淡出（120ms，只在 transform/opacity 之外仅动 opacity）
   function setCharacter(name) {
+    // 自定义背景/立绘启用时暂停表情切换（场景只有一张图）
+    if (themeActive()) return;
     if (!SCENE_SRC[name]) name = 'idle';
     ui.sceneState = name;
     const src = SCENE_SRC[name];
@@ -388,11 +414,275 @@
     if (els.charToggle) els.charToggle.checked = charOn;
   }
 
+  // ---------- 自定义图片（背景图 / 角色立绘，走后端 /api/theme） ----------
+  function themeActive() {
+    return !!(state.theme.bg || state.theme.char);
+  }
+
+  function bust(url, ts) {
+    if (!url) return url;
+    const v = String(ts || Date.now());
+    // 已带 v= 参数时替换，避免 ?v=xxx&v=yyy
+    if (/[?&]v=/.test(url)) return url.replace(/([?&])v=[^&#]*/, '$1v=' + v);
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'v=' + v;
+  }
+
+  function setThumb(el, item) {
+    if (!el) return;
+    if (item && item.url) {
+      el.style.backgroundImage = 'url("' + bust(item.url, item.updated_at) + '")';
+      el.classList.add('has-image');
+    } else {
+      el.style.backgroundImage = '';
+      el.classList.remove('has-image');
+    }
+  }
+
+  function renderThemeSlots() {
+    const bg = state.theme.bg;
+    const ch = state.theme.char;
+    setThumb(els.bgThumb, bg);
+    setThumb(els.charThumb, ch);
+    if (els.bgDesc) els.bgDesc.textContent = bg
+      ? '已设置。背景已换成你的图，表情切换暂停。'
+      : '还没上传。上传后替换主视觉背景，表情切换会暂停。';
+    if (els.charDesc) els.charDesc.textContent = ch
+      ? '已设置。背景换成纯色底图，右侧显示你的立绘，表情切换暂停。'
+      : '还没上传。上传后背景换成纯色底图，右侧立绘换成你的图。';
+    if (els.bgResetBtn) els.bgResetBtn.disabled = !bg || !state.themeSupported;
+    if (els.charResetBtn) els.charResetBtn.disabled = !ch || !state.themeSupported;
+  }
+
+  function applyTheme() {
+    const t = state.theme;
+    const setSceneBg = (url) => {
+      els.sceneA.style.backgroundImage = 'url("' + url + '")';
+      els.sceneB.style.backgroundImage = 'url("' + url + '")';
+      ui.sceneSrc = url;
+    };
+    if (t.bg) {
+      setSceneBg(bust(t.bg.url, t.bg.updated_at));
+      ui.sceneState = 'custom';
+    } else if (t.char) {
+      setSceneBg('assets/bg-plain.webp');
+      ui.sceneState = 'custom';
+    } else {
+      // 无自定义图片：完整恢复内置五表情双图层（含图层状态）
+      initScenes();
+    }
+    if (t.char) {
+      els.customChar.src = bust(t.char.url, t.char.updated_at);
+      els.customChar.hidden = false;
+    } else {
+      els.customChar.hidden = true;
+      els.customChar.removeAttribute('src');
+    }
+    renderThemeSlots();
+  }
+
+  async function loadTheme() {
+    if (!state.themeLoaded) {
+      // 首屏先按默认渲染占位
+      renderThemeSlots();
+    }
+    try {
+      const t = await api('/api/theme');
+      state.themeSupported = true;
+      state.theme = { bg: (t && t.bg) || null, char: (t && t.char) || null };
+      state.themeLoaded = true;
+      if (els.themeNote) {
+        els.themeNote.hidden = true;
+        els.themeNote.classList.remove('unsupported');
+      }
+      applyTheme();
+    } catch (e) {
+      if (e && e.status === 404) {
+        // 后端版本不支持自定义图片：静默降级，只在设置面板里说明
+        state.themeSupported = false;
+        state.theme = { bg: null, char: null };
+        state.themeLoaded = true;
+        if (els.themeNote) {
+          els.themeNote.hidden = false;
+          els.themeNote.classList.add('unsupported');
+          els.themeNote.textContent = '当前后端版本不支持自定义图片。';
+        }
+        renderThemeSlots();
+      }
+      // 其它错误（后端没起等）不在这里提示，全局有引擎状态兜底
+    }
+  }
+
+  function setSlotBusy(slot, busy) {
+    const map = { bg: ['bgUploadBtn', 'bgResetBtn'], char: ['charUploadBtn', 'charResetBtn'] };
+    (map[slot] || []).forEach((id) => {
+      const el = els[id];
+      if (!el) return;
+      el.classList.toggle('theme-uploading', busy);
+      el.disabled = busy;
+      if (busy && id.indexOf('Upload') >= 0) el.textContent = '上传中…';
+      else if (!busy && id.indexOf('Upload') >= 0) el.textContent = '上传';
+    });
+  }
+
+  async function uploadTheme(slot, file) {
+    if (!state.themeSupported) {
+      showToast('当前后端版本不支持自定义图片', 3000);
+      return;
+    }
+    const name = slot === 'bg' ? '背景图' : '角色立绘';
+    const fd = new FormData();
+    fd.append('file', file);
+    setSlotBusy(slot, true);
+    try {
+      await api('/api/theme/upload?slot=' + slot, { method: 'POST', body: fd });
+      await loadTheme();
+      showToast(name + '已上传。自定义图片已启用，表情切换暂停。', 3200);
+    } catch (e) {
+      showToast(name + '上传失败：' + String((e && e.message) || e), 3600);
+    } finally {
+      setSlotBusy(slot, false);
+    }
+  }
+
+  async function resetTheme(slot) {
+    const name = slot === 'bg' ? '背景图' : '角色立绘';
+    try {
+      await api('/api/theme/' + slot, { method: 'DELETE' });
+      await loadTheme();
+      showToast(name + '已恢复默认。', 2600);
+    } catch (e) {
+      showToast(name + '恢复失败：' + String((e && e.message) || e), 3600);
+    }
+  }
+
+  // ---------- 左下角教程 ----------
+  const TUTORIAL_STEPS = [
+    { id: 'import', title: '导入素材', view: 'material', desc: '选一个装着人声的文件夹，扫描后导入。' },
+    { id: 'clean', title: '识别与清洗', view: 'material', desc: '把音频转成文字并做基本清洗，这一步是训练的前提。' },
+    { id: 'annotate', title: '核对标注', view: 'annotation', desc: '听一遍识别出来的文本，把错字改掉，训练用的就是改后的文本。' },
+    { id: 'train', title: '训练模型', view: 'train', desc: '用清洗好的素材训练音色，练完会自动挂到合成页。' },
+    { id: 'eval', title: '评测打分', view: 'eval', desc: '跑一次评测，看声纹相似度分数判断像不像本人。' },
+    { id: 'synth', title: '合成试听', view: 'synth', desc: '选音色和语气，写台词，点合成。' },
+  ];
+
+  async function refreshTutorialData() {
+    try {
+      const results = await Promise.allSettled([
+        api('/api/data/status'),
+        api('/api/models'),
+        api('/api/evaluations'),
+        api('/api/history'),
+      ]);
+      const ok = (i, fb) => (results[i].status === 'fulfilled' && results[i].value ? results[i].value : fb);
+      const d = ok(0, {});
+      const m = ok(1, {});
+      const ev = ok(2, {});
+      const h = ok(3, {});
+      const histList = Array.isArray(h) ? h : (h && Array.isArray(h.history) ? h.history : []);
+      state.tutorialData = {
+        wav: Number(d.wav_count) || 0,
+        clean: Number(d.clean_count) || 0,
+        models: Array.isArray(m.models) ? m.models.length : 0,
+        evals: Array.isArray(ev.evaluations) ? ev.evaluations.length : 0,
+        history: histList.length,
+      };
+    } catch (e) {
+      /* 读不到就按全 0 处理 */
+    }
+  }
+
+  function tutorialDone(stepId) {
+    const d = state.tutorialData;
+    // 每一步只在前置步骤都完成后才算完成，避免有旧模型时前半段被跳过
+    const base = {
+      import: d.wav > 0,
+      clean: d.clean > 0,
+      annotate: d.clean > 0,
+      train: d.clean > 0 && d.models > 0,
+      eval: d.models > 0 && d.evals > 0,
+      synth: d.history > 0,
+    };
+    let prevDone = true;
+    for (const s of TUTORIAL_STEPS) {
+      const ok = Boolean(base[s.id]);
+      if (s.id === stepId) return prevDone && ok;
+      prevDone = prevDone && ok;
+    }
+    return false;
+  }
+
+  function currentTutorialStep() {
+    for (const s of TUTORIAL_STEPS) {
+      if (!tutorialDone(s.id)) return s.id;
+    }
+    return 'synth';
+  }
+
+  function renderTutorial() {
+    if (!els.tutorialBody) return;
+    const current = currentTutorialStep();
+    els.tutorialBody.innerHTML = '';
+    TUTORIAL_STEPS.forEach((s, i) => {
+      const done = tutorialDone(s.id);
+      const isCurrent = s.id === current;
+      const row = document.createElement('div');
+      row.className = 'tutorial-step' + (isCurrent ? ' is-current' : '') + (done && !isCurrent ? ' is-done' : '');
+
+      const num = document.createElement('span');
+      num.className = 't-step-num';
+      num.textContent = String(i + 1);
+
+      const body = document.createElement('div');
+      body.className = 't-step-body';
+      const title = document.createElement('div');
+      title.className = 't-step-title';
+      const titleText = document.createElement('span');
+      titleText.textContent = s.title;
+      title.appendChild(titleText);
+      const mark = document.createElement('span');
+      mark.className = 't-step-mark';
+      mark.textContent = isCurrent ? '你现在在这里' : (done ? '已完成' : '');
+      if (mark.textContent) title.appendChild(mark);
+      const desc = document.createElement('div');
+      desc.className = 't-step-desc';
+      desc.textContent = s.desc;
+      body.append(title, desc);
+
+      const go = document.createElement('button');
+      go.type = 'button';
+      go.className = 't-step-go';
+      go.textContent = '去这里';
+      go.addEventListener('click', () => {
+        closeTutorial();
+        if (typeof switchView === 'function') switchView(s.view);
+      });
+
+      row.append(num, body, go);
+      els.tutorialBody.appendChild(row);
+    });
+  }
+
+  function openTutorial() {
+    if (!els.tutorialPanel) return;
+    els.tutorialPanel.classList.remove('hidden');
+    els.tutorialBtn.setAttribute('aria-expanded', 'true');
+    openSettings(false);
+    refreshTutorialData().then(renderTutorial);
+  }
+
+  function closeTutorial() {
+    if (!els.tutorialPanel) return;
+    els.tutorialPanel.classList.add('hidden');
+    els.tutorialBtn.setAttribute('aria-expanded', 'false');
+  }
+
   // ---- 布局变量：对话框位置决定 BACKLOG / 面板高度，避免矮屏互相遮挡 ----
   function syncLayoutVars() {
     const dialog = document.querySelector('.dialog');
     if (!dialog) return;
     const r = dialog.getBoundingClientRect();
+    // 非合成页对话框是隐藏的（rect 全 0）：保持上次的变量，避免教程按钮被顶出屏幕
+    if (r.height < 10 || r.width < 10) return;
     const root = document.documentElement;
     root.style.setProperty('--dialog-top', Math.round(r.top) + 'px');
     root.style.setProperty('--content-left', Math.round(r.left) + 'px');
@@ -468,6 +758,7 @@
     if (els.historyBtn) els.historyBtn.setAttribute('aria-expanded', 'false');
     if (els.settingsPanel) els.settingsPanel.classList.add('hidden');
     if (els.settingsBtn) els.settingsBtn.setAttribute('aria-expanded', 'false');
+    closeTutorial();
     toggleBacklog(false);
     syncDrawerScrim();
   }
@@ -630,7 +921,12 @@
         loadEvalHistory();
       });
     }
-    if (name === 'synth') deferPageLoad(loadRefs);
+    if (name === 'synth') {
+      deferPageLoad(() => {
+        loadRefs();
+        loadTheme();   // 切回合成页恢复自定义图片状态
+      });
+    }
     try { document.title = title + ' · AkiBurger Voice'; } catch (e) { /* 忽略 */ }
     // 外壳：body[data-view] 控制对话框/浮层显隐；背景表情回 idle；内容交叉淡入转场
     document.body.dataset.view = name;
@@ -804,6 +1100,8 @@
       // 训练面板不依赖引擎状态，始终加载
       loadTrainData();
       refreshTrainStatus();
+      // 自定义图片：启动时恢复状态（接口 404 时内部静默降级）
+      loadTheme();
     } catch (e) {
       // fetch 失败（后端没起 / file:// 打开）和 HTTP 错误分开提示
       const httpErr = /^HTTP \d+/.test(String((e && e.message) || e));
@@ -1522,6 +1820,7 @@
     try {
       const d = await api('/api/annotation/list');
       annLastData = d;
+      state.annCount = d.count;
       const st = d.stats || {};
       els.annStats.textContent =
         `共 ${d.count} 条标注` +
@@ -2801,6 +3100,45 @@
       if (e.key === 'Escape') closeDrawers();
     });
   }
+
+  // ---------- 自定义图片：上传 / 恢复默认 ----------
+  function bindThemeSlot(slot, uploadBtn, resetBtn, fileInput) {
+    if (!uploadBtn || !resetBtn || !fileInput) return;
+    uploadBtn.addEventListener('click', () => {
+      // 每次点击都重置 input，让用户能重新选同一张图
+      fileInput.value = '';
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) return;
+      uploadTheme(slot, f);
+    });
+    resetBtn.addEventListener('click', () => resetTheme(slot));
+  }
+  bindThemeSlot('bg', els.bgUploadBtn, els.bgResetBtn, els.bgFileInput);
+  bindThemeSlot('char', els.charUploadBtn, els.charResetBtn, els.charFileInput);
+
+  // ---------- 教程：开/关/点外关闭 ----------
+  if (els.tutorialBtn) {
+    els.tutorialBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (els.tutorialPanel.classList.contains('hidden')) openTutorial();
+      else closeTutorial();
+    });
+    if (els.tutorialCloseBtn) {
+      els.tutorialCloseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeTutorial();
+      });
+    }
+    document.addEventListener('click', (e) => {
+      if (!els.tutorialPanel || els.tutorialPanel.classList.contains('hidden')) return;
+      if (els.tutorialPanel.contains(e.target) || els.tutorialBtn.contains(e.target)) return;
+      closeTutorial();
+    });
+  }
+
   if (els.voicePanelBtn) {
     els.voicePanelBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -3114,4 +3452,12 @@
   switchView(VIEW_NAMES.includes(initialView) ? initialView : 'synth');
 
   boot();
+
+  // 教程：首次打开自动弹一次，之后只点按钮才开
+  try {
+    if (!localStorage.getItem('abv:tutorialSeen')) {
+      localStorage.setItem('abv:tutorialSeen', '1');
+      setTimeout(() => openTutorial(), 900);
+    }
+  } catch (e) { /* localStorage 不可用时跳过自动弹出 */ }
 })();
