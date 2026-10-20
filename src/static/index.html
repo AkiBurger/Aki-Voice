@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AkiBurger Voice · 合成台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23EEF6FF'/><circle cx='50' cy='50' r='22' fill='%232F7CF6'/><circle cx='62' cy='38' r='8' fill='%23FF8FC7'/></svg>">
-<link rel="stylesheet" href="styles.css?v=20261020v7">
+<link rel="stylesheet" href="styles.css?v=20261020v8">
 <link rel="preload" as="image" href="assets/hero-idle.webp">
 </head>
 <body data-view="synth">
@@ -109,6 +109,8 @@
       </span>
     </div>
     <div class="menu-cap"><span>MAIN MENU</span><span>／ 主菜单</span></div>
+    <!-- 激活胶囊：随页面切换平滑滑动（JS 定位） -->
+    <span class="nav-capsule" id="navCapsule" aria-hidden="true"></span>
 
     <button type="button" class="side-nav-item flow-step current" data-view="synth"
             aria-current="page" title="语音合成" aria-label="语音合成">
@@ -156,24 +158,9 @@
   </nav>
 
   <!-- 角色直接画在 A 式主视觉背景里：表情切换 = 背景图 120ms 淡入淡出 -->
-  <!-- ================= 页面切换多层转场 ================= -->
-  <div class="page-veil" id="pageVeil" aria-hidden="true" data-type="a" data-dir="fwd">
-    <!-- A：跨区 cut-in（深蓝块 + 速度线 + 页面名贴纸） -->
-    <div class="veil-a">
-      <i class="veil-a-block"></i>
-      <span class="veil-a-lines"><i></i><i></i><i></i></span>
-      <span class="veil-sticker">
-        <b class="veil-sticker-num">02</b>
-        <span class="veil-sticker-en">MATERIAL</span>
-        <span class="veil-sticker-cn">素材</span>
-      </span>
-    </div>
-    <!-- B：流水线内部（漫画翻页：双面板错位 + 大编号） -->
-    <div class="veil-b">
-      <i class="veil-b-pink"></i>
-      <i class="veil-b-white"></i>
-      <span class="veil-b-num">02</span>
-    </div>
+  <!-- ================= 页面切换 v2：内容交叉淡入 + 极细斜向高光 ================= -->
+  <div class="page-veil" id="pageVeil" aria-hidden="true">
+    <i class="page-sweep"></i>
   </div>
 
   <!-- ================= 主内容区（其它 5 页） ================= -->
@@ -764,6 +751,6 @@
   </div>
 </div>
 
-<script src="app.js?v=20261020v7"></script>
+<script src="app.js?v=20261020v8"></script>
 </body>
 </html>

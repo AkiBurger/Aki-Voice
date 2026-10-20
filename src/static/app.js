@@ -189,6 +189,7 @@
     backlogCount: $('backlogCount'),
     speakerTone: $('speakerTone'),
     pageVeil: $('pageVeil'),
+    navCapsule: $('navCapsule'),
     voicePanelBtn: $('voicePanelBtn'),
     drawerScrim: $('drawerScrim'),
     historyBtn: $('historyBtn'),
@@ -259,23 +260,12 @@
     ui.sceneSrc = src;
   }
 
-  // ---------- 页面切换转场：A 跨区 cut-in / B 流水线翻页 / C 逆向 ----------
-  const TRANS = { timer: 0, leaveTimer: 0 };
+  // ---------- 页面切换 v2：内容交叉淡入 + 方向位移 + 极细斜向高光 ----------
+  const TRANS = { timer: 0, leaveTimer: 0, titleTimer: 0, titleTimer2: 0 };
   function motionEnabled() {
     return !document.body.classList.contains('no-motion') && !prefersReducedMotion();
   }
   function viewIndex(v) { return MENU_ORDER.indexOf(v); }
-  function setSticker(meta) {
-    if (!els.pageVeil) return;
-    const num = els.pageVeil.querySelector('.veil-sticker-num');
-    const en = els.pageVeil.querySelector('.veil-sticker-en');
-    const cn = els.pageVeil.querySelector('.veil-sticker-cn');
-    const big = els.pageVeil.querySelector('.veil-b-num');
-    if (num) num.textContent = meta.num;
-    if (en) en.textContent = meta.en;
-    if (cn) cn.textContent = meta.cn;
-    if (big) big.textContent = meta.num;
-  }
   function pulseNav(name) {
     const btn = Array.from(navButtons()).find((b) => b.dataset.view === name);
     if (!btn) return;
@@ -285,65 +275,103 @@
     clearTimeout(pulseNav._t);
     pulseNav._t = setTimeout(() => btn.classList.remove('pulse'), 240);
   }
+  // 导航激活胶囊：按当前 item 的 offsetTop/height 平滑滑动
+  function moveNavCapsule(animate) {
+    const cap = els.navCapsule;
+    if (!cap) return;
+    const btn = Array.from(navButtons()).find((b) => b.dataset.view === state.view);
+    if (!btn) return;
+    if (!animate) {
+      cap.classList.add('no-anim');
+      cap.style.opacity = '0';
+    }
+    cap.style.transform = 'translateY(' + btn.offsetTop + 'px)';
+    cap.style.height = btn.offsetHeight + 'px';
+    if (!animate) {
+      void cap.offsetHeight;
+      cap.classList.remove('no-anim');
+      cap.style.opacity = '';
+    }
+    cap.classList.add('ready');
+  }
+  // 顶栏标题：旧标题 4px 上移淡出 → 新标题 4px 滑入
+  function animateTitle(text) {
+    const t = document.getElementById('pageTitle');
+    if (!t) return;
+    clearTimeout(TRANS.titleTimer);
+    clearTimeout(TRANS.titleTimer2);
+    if (!motionEnabled()) {
+      t.textContent = text;
+      t.classList.remove('title-leave', 'title-enter');
+      return;
+    }
+    t.classList.remove('title-enter');
+    t.classList.add('title-leave');
+    TRANS.titleTimer = setTimeout(() => {
+      t.textContent = text;
+      t.classList.remove('title-leave');
+      void t.offsetWidth;
+      t.classList.add('title-enter');
+      TRANS.titleTimer2 = setTimeout(() => t.classList.remove('title-enter'), 140);
+    }, 70);
+  }
   function clearTransition() {
     clearTimeout(TRANS.timer);
     clearTimeout(TRANS.leaveTimer);
+    clearTimeout(TRANS.titleTimer);
+    clearTimeout(TRANS.titleTimer2);
     if (els.pageVeil) els.pageVeil.classList.remove('run');
     document.body.classList.remove('is-transitioning');
     document.querySelectorAll('.view.view-leave').forEach((el) => {
-      el.classList.remove('view-leave', 'dir-fwd', 'dir-back');
+      el.classList.remove('view-leave', 'dir-down', 'dir-up');
       if (el.id !== 'view-' + state.view) el.classList.add('hidden');
     });
     document.querySelectorAll('.view.view-enter').forEach((el) => {
-      el.classList.remove('view-enter', 'enter-a', 'enter-b', 'dir-fwd', 'dir-back', 'fade-only');
+      el.classList.remove('view-enter', 'dir-down', 'dir-up', 'fade-only');
     });
   }
-  function playViewTransition(prev, next) {
+  function playViewTransition(prev, next, title) {
     const prevEl = document.getElementById('view-' + prev);
     const nextEl = document.getElementById('view-' + next);
     if (!nextEl) return;
-    if (!motionEnabled()) {
+    clearTransition();
+    const motion = motionEnabled();
+    // 方向：菜单 index 增大 = 新内容从下方来；减小 = 从上方来
+    const dir = viewIndex(next) > viewIndex(prev) ? 'down' : 'up';
+    if (!motion) {
+      // 只做 150ms 纯淡入
       if (prevEl && prevEl !== nextEl) prevEl.classList.add('hidden');
       nextEl.classList.add('view-enter', 'fade-only');
       clearTimeout(playViewTransition._fade);
       playViewTransition._fade = setTimeout(() => nextEl.classList.remove('view-enter', 'fade-only'), 180);
+      animateTitle(title);
       return;
     }
-    const cross = prev === 'synth' || next === 'synth';
-    const type = cross ? 'a' : 'b';
-    const dir = viewIndex(next) > viewIndex(prev) ? 'fwd' : 'back';
-    const meta = MENU_META[next] || MENU_META.synth;
-    clearTransition();
-    // 旧页：1.02 scale + fade，浮在新页上方 220ms
+    clearTimeout(playViewTransition._fade);
     if (prevEl && prevEl !== nextEl) {
       prevEl.classList.remove('hidden');
       prevEl.classList.add('view-leave', 'dir-' + dir);
       TRANS.leaveTimer = setTimeout(() => {
         prevEl.classList.add('hidden');
         prevEl.classList.remove('view-leave', 'dir-' + dir);
-      }, 230);
+      }, 220);
     }
-    // 新页内容入场（A：8px 上滑；B：按方向 12px 横向滑入）
     nextEl.classList.remove('hidden');
-    nextEl.classList.remove('view-enter', 'enter-a', 'enter-b', 'dir-fwd', 'dir-back', 'fade-only');
+    nextEl.classList.remove('view-enter', 'dir-down', 'dir-up', 'fade-only');
     void nextEl.offsetWidth;
-    nextEl.classList.add('view-enter', type === 'a' ? 'enter-a' : 'enter-b', 'dir-' + dir);
-    // 转场层
+    nextEl.classList.add('view-enter', 'dir-' + dir);
     if (els.pageVeil) {
-      els.pageVeil.dataset.type = type;
-      els.pageVeil.dataset.dir = dir;
-      setSticker(meta);
       els.pageVeil.classList.remove('run');
       void els.pageVeil.offsetWidth;
       els.pageVeil.classList.add('run');
     }
     document.body.classList.add('is-transitioning');
-    document.body.dataset.transType = type;
     document.body.dataset.transDir = dir;
+    animateTitle(title);
     TRANS.timer = setTimeout(() => {
       if (els.pageVeil) els.pageVeil.classList.remove('run');
       document.body.classList.remove('is-transitioning');
-      nextEl.classList.remove('view-enter', 'enter-a', 'enter-b', 'dir-fwd', 'dir-back');
+      nextEl.classList.remove('view-enter', 'dir-down', 'dir-up');
     }, 300);
   }
 
@@ -529,14 +557,6 @@
   };
   // 菜单顺序（决定转场方向）：01 合成 → 02 素材 → 03 质检 → 04 标注 → 05 训练 → 06 评测
   const MENU_ORDER = ['synth', 'material', 'qc', 'annotation', 'train', 'eval'];
-  const MENU_META = {
-    synth: { num: '01', en: 'SYNTH', cn: '合成' },
-    material: { num: '02', en: 'MATERIAL', cn: '素材' },
-    qc: { num: '03', en: 'QUALITY', cn: '质检' },
-    annotation: { num: '04', en: 'ANNOTATE', cn: '标注' },
-    train: { num: '05', en: 'TRAIN', cn: '训练' },
-    eval: { num: '06', en: 'EVALUATE', cn: '评测' },
-  };
 
   function navButtons() {
     return document.querySelectorAll('.side-nav-item[data-view], .flow-step[data-view]');
@@ -568,10 +588,12 @@
       if (on) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
-    // 顶栏页面标题
+    // 激活胶囊平滑滑到新 item
+    moveNavCapsule(!!prev && motionEnabled());
+    // 顶栏页面标题：首屏直接设置；切换时由 playViewTransition 做淡出/滑入
     const title = VIEW_TITLES[name] || '语音合成';
     const pageTitle = document.getElementById('pageTitle');
-    if (pageTitle) pageTitle.textContent = title;
+    if (!prev && pageTitle) pageTitle.textContent = title;
     try {
       history.replaceState(null, '', '#' + name);
     } catch (e) {
@@ -610,10 +632,10 @@
     }
     if (name === 'synth') deferPageLoad(loadRefs);
     try { document.title = title + ' · AkiBurger Voice'; } catch (e) { /* 忽略 */ }
-    // 外壳：body[data-view] 控制对话框/浮层显隐；背景表情回 idle；三类分层转场
+    // 外壳：body[data-view] 控制对话框/浮层显隐；背景表情回 idle；内容交叉淡入转场
     document.body.dataset.view = name;
     setCharacter(name === 'synth' && state.inFlight ? 'thinking' : 'idle');
-    if (prev) playViewTransition(prev, name);
+    if (prev) playViewTransition(prev, name, title);
     closeDrawers();
     if (els.batchPanel && !els.batchPanel.classList.contains('hidden')) {
       els.batchPanel.classList.add('hidden');
@@ -2810,6 +2832,7 @@
     applyCompactUI();
     syncDrawerScrim();
     syncLayoutVars();
+    moveNavCapsule(false);
   });
   if (els.motionToggle) {
     els.motionToggle.addEventListener('change', () => {
@@ -3079,6 +3102,9 @@
   }
   syncLayoutVars();
   updateSynthButtonState();
+  // 字体加载后胶囊位置可能变，重新对齐一次
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => moveNavCapsule(false));
+  window.addEventListener('load', () => moveNavCapsule(false));
   // 顶部标签切换
   document.querySelectorAll('.side-nav-item[data-view], .flow-step[data-view]').forEach((b) => {
     b.addEventListener('click', () => switchView(b.dataset.view));
