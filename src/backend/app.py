@@ -33,6 +33,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import engine as engine                 # 用 engine._attached 判断当前挂载的权重
 from engine import EngineError, is_engine_up, set_models, synthesize
 from emotion import judge_tone, TONES
 from text_split import estimate_seconds, split_sentences
@@ -236,22 +237,55 @@ def default_ref_file():
     return pool[0] if pool else None
 
 
-MODEL_NAMES_FILE = DATA_DIR / "models.json"      # 用户自定义的模型名字
+MODEL_NAMES_FILE = DATA_DIR / "models.json"      # 模型注册表：{active, names}
+
+
+def _load_models_registry() -> dict:
+    """
+    读模型注册表。新结构 {"active": "<SoVITS 文件名>", "names": {<文件名>: <显示名>}}。
+    兼容旧格式：旧文件是 {文件名: 显示名} 的扁平字典，自动当作 names 处理。
+    """
+    try:
+        if MODEL_NAMES_FILE.exists():
+            data = json.loads(MODEL_NAMES_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "active" in data and "names" in data:
+                return {"active": data.get("active") or "", "names": data.get("names") or {}}
+            # 旧格式：扁平 {file: name}
+            return {"active": "", "names": data if isinstance(data, dict) else {}}
+    except Exception:
+        pass
+    return {"active": "", "names": {}}
+
+
+def _save_models_registry(names: dict, active: str) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    MODEL_NAMES_FILE.write_text(
+        json.dumps({"active": active, "names": names}, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def load_model_names() -> dict:
-    """读取用户给模型起的名字：{权重文件名: 显示名}。"""
-    try:
-        if MODEL_NAMES_FILE.exists():
-            return json.loads(MODEL_NAMES_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        pass
-    return {}
+    """读取用户给模型起的名字：{权重文件名: 显示名}（兼容旧调用方）。"""
+    return _load_models_registry()["names"]
 
 
 def save_model_names(names: dict) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    MODEL_NAMES_FILE.write_text(json.dumps(names, ensure_ascii=False, indent=2), encoding="utf-8")
+    """只更新显示名，不动 active。"""
+    reg = _load_models_registry()
+    _save_models_registry(names, reg["active"])
+
+
+def _active_model_file() -> str:
+    """当前启用模型的 SoVITS 文件名；注册表里没有就取最近修改的权重。"""
+    reg = _load_models_registry()
+    active = reg.get("active", "")
+    if active and SOVITS_WEIGHTS_DIR is not None and (SOVITS_WEIGHTS_DIR / active).exists():
+        return active
+    if SOVITS_WEIGHTS_DIR is not None and SOVITS_WEIGHTS_DIR.exists():
+        files = list(SOVITS_WEIGHTS_DIR.glob("*.pth"))
+        if files:
+            files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            return files[0].name
+    return ""
 
 
 def list_models() -> list:
@@ -259,7 +293,8 @@ def list_models() -> list:
     扫描 GPT-SoVITS 的权重目录，列出可用的训练模型。
     不写死在配置里 —— 目录里有什么就显示什么。
     命名约定：SoVITS 文件名里的 _eN_ 就是训练轮数（如 setsuna_light_e2_s362.pth → e2）。
-    用户可以给模型改名，名字存在 data/models.json 里。
+    id 用文件名去扩展名（唯一 —— 修了"e2 撞车，前端永远选到旧模型"的问题）。
+    用户可以给模型改名，名字存在 data/models.json 的 names 里。
     """
     custom = load_model_names()
     models = []
@@ -271,7 +306,7 @@ def list_models() -> list:
             epoch = int(m.group(1))
             default_name = f"e{epoch}"
             models.append({
-                "id": f"e{epoch}",
+                "id": f.stem,                        # 唯一 id：setsuna_light_e6_s294
                 "label": custom.get(f.name) or default_name,
                 "name": custom.get(f.name) or default_name,
                 "default_name": default_name,
@@ -279,6 +314,8 @@ def list_models() -> list:
                 "epoch": epoch,
                 "file": f.name,
             })
+    # 轮数高的排前面（新训练的模型好找）
+    models.sort(key=lambda x: (-x["epoch"], x["file"]))
     return models
 
 
@@ -307,20 +344,28 @@ def _pick_gpt_file(epoch: int):
 
 def switch_model_if_needed(voice: str) -> None:
     """
-    如果界面选的是某个模型（如 e2），把引擎权重切到它。
+    如果界面选的是某个模型，把引擎权重切到它。
+    voice 可以是：模型 id（=文件名 stem）、显示名、或权重文件名。
     """
     if not voice:
         return
+    v = Path(voice).name          # 去掉可能的目录前缀
     m = None
     for item in list_models():
-        if voice in (item["id"], item["name"], item["file"]):
+        if v in (item["id"], item["name"], item["file"]):
             m = item
             break
     if m is None:
         return
+    sv_target = f"SoVITS_weights_v2Pro/{m['file']}"
+    gpt_name = _pick_gpt_file(m["epoch"])
+    gpt_target = f"GPT_weights_v2Pro/{gpt_name}" if gpt_name else ""
+    # 引擎已挂载同一套权重就直接跳过（engine._attached 是引擎重启会清空的缓存，
+    # 所以这里跳过是安全的：重启后 _attached 为空，会重新挂）
+    if engine._attached.get("sovits") == sv_target and engine._attached.get("gpt") == gpt_target:
+        return
     try:
-        set_models(f"SoVITS_weights_v2Pro/{m['file']}", f"GPT_weights_v2Pro/{_pick_gpt_file(m['epoch'])}"
-                   if _pick_gpt_file(m["epoch"]) else "")
+        set_models(sv_target, gpt_target)
     except EngineError as e:
         # 切不过去就明确报错，别让用户以为用的是选中的模型
         raise EngineError(f"切换到模型 {m.get('name') or m['file']} 失败：{e}") from e
@@ -358,8 +403,22 @@ TONES_DIR = REF_DIR / "tones"
 _tone_map_cache = None
 
 
+def _wav_duration(path: Path):
+    """读 wav 时长（秒）；读不到返回 None。"""
+    try:
+        import soundfile as sf
+        info = sf.info(str(path))
+        return round(info.frames / info.samplerate, 2)
+    except Exception:
+        return None
+
+
 def tone_ref(tone: str):
-    """按语气取参考音频：返回 (路径, 参考文本)；没有配置就返回 None。"""
+    """
+    按语气取参考音频：返回 (路径, 参考文本)；没有配置或都不合格就返回 None。
+    引擎硬性要求参考音频 3~10 秒 —— 语气库里的片段超范围会直接跳过，
+    否则一次合成就被引擎 400 拒掉（语气库是自动生成的，不能保证每段都合格）。
+    """
     global _tone_map_cache
     if _tone_map_cache is None:
         try:
@@ -369,8 +428,12 @@ def tone_ref(tone: str):
             _tone_map_cache = {}
     for item in _tone_map_cache.get(tone, []):
         path = TONES_DIR / item.get("file", "")
-        if path.exists() and _inside_ref_dir(path):
-            return str(path), item.get("text", "")
+        if not (path.exists() and _inside_ref_dir(path)):
+            continue
+        dur = _wav_duration(path)
+        if dur is not None and not (3.0 <= dur <= 10.0):
+            continue                      # 超引擎范围，跳过试下一条
+        return str(path), item.get("text", "")
     return None
 
 
@@ -408,6 +471,10 @@ def build_tones_if_missing() -> bool:
                 wav_path, _spk, _lang, text = parts
                 p = Path(wav_path)
                 if not p.exists() or not text.strip():
+                    continue
+                # 引擎要求参考音频 3~10 秒，挑素材时就把超范围的滤掉
+                dur = _wav_duration(p)
+                if dur is not None and not (3.0 <= dur <= 10.0):
                     continue
                 tone = judge_tone(text, "ja")["tone"]
                 if tone not in picked or len(picked[tone]) >= 2:
@@ -621,12 +688,48 @@ def tones_build():
 
 @app.get("/api/models")
 def models():
-    """可用的训练模型（从权重目录扫出来，目录里有什么就显示什么）。"""
+    """
+    可用的训练模型（从权重目录扫出来，目录里有什么就显示什么）。
+    active 从 models.json 注册表读（没有就取最近修改的权重），不再是固定第一个。
+    """
     ms = list_models()
+    active_file = _active_model_file()
+    for m in ms:
+        m["active"] = (m["file"] == active_file)
     return {
         "models": ms,
-        "active": ms[0]["id"] if ms else None,
+        "active": active_file,
+        "voice_name": _voice_name(),
     }
+
+
+class ActivateModelRequest(BaseModel):
+    file: str          # SoVITS 权重文件名（或文件 stem），如 setsuna_light_e6_s294.pth
+
+
+@app.post("/api/models/activate")
+def activate_model(req: ActivateModelRequest):
+    """
+    显式启用一个模型：把引擎权重切过去（SoVITS + 匹配的 GPT），
+    并把 active 写进 models.json —— 训练完的新模型从这就能用上。
+    """
+    name = Path(req.file).name
+    if not name.lower().endswith(".pth"):
+        name = name + ".pth"
+    if SOVITS_WEIGHTS_DIR is None or not (SOVITS_WEIGHTS_DIR / name).exists():
+        raise HTTPException(status_code=404, detail=f"找不到这个模型文件：{name}")
+    m = re.search(r"_e(\d+)_", name)
+    epoch = int(m.group(1)) if m else 0
+    gpt_name = _pick_gpt_file(epoch)
+    try:
+        set_models(f"SoVITS_weights_v2Pro/{name}",
+                   f"GPT_weights_v2Pro/{gpt_name}" if gpt_name else "")
+    except EngineError as e:
+        raise HTTPException(status_code=502, detail=f"切换模型失败：{e}")
+    reg = _load_models_registry()
+    _save_models_registry(reg["names"], name)
+    model = next((mm for mm in list_models() if mm["file"] == name), None)
+    return {"ok": True, "active": name, "model": model}
 
 
 class RenameModelRequest(BaseModel):
@@ -662,6 +765,185 @@ def rename_model(req: RenameModelRequest):
         if m["file"] == req.file:
             return {"ok": True, "model": m}
     return {"ok": True}
+
+
+# ============================================================
+# 音色显示名（界面上显示的名字，如「東馬」，不再写死「雪菜」）
+# ============================================================
+VOICE_NAME_FILE = DATA_DIR / "voice.json"
+
+
+def _voice_name() -> str:
+    """读音色显示名，默认空字符串。"""
+    try:
+        if VOICE_NAME_FILE.exists():
+            return str(json.loads(VOICE_NAME_FILE.read_text(encoding="utf-8")).get("name", "") or "")
+    except Exception:
+        pass
+    return ""
+
+
+class VoiceNameRequest(BaseModel):
+    name: str = ""
+
+
+@app.get("/api/voice/name")
+def voice_name_get():
+    return {"name": _voice_name()}
+
+
+@app.post("/api/voice/name")
+def voice_name_set(req: VoiceNameRequest):
+    """设置音色显示名（≤24 字，空=清除）。"""
+    new_name = (req.name or "").strip()
+    if len(new_name) > 24:
+        raise HTTPException(status_code=400, detail="名字太长了，24 个字以内")
+    if new_name and not re.match(r"^[\w\u4e00-\u9fa5 ·\-\.（）()]+$", new_name):
+        raise HTTPException(status_code=400, detail="名字里有不支持的字符")
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if new_name:
+        VOICE_NAME_FILE.write_text(json.dumps({"name": new_name}, ensure_ascii=False, indent=2), encoding="utf-8")
+    else:
+        VOICE_NAME_FILE.unlink(missing_ok=True)
+    return {"ok": True, "name": new_name}
+
+
+# ============================================================
+# 维护：统计与清理垃圾（回收站/旧训练备份/旧 checkpoint/可重算特征/历史/日志）
+# ============================================================
+def _dir_size(path: Path):
+    """目录总字节数 + 文件数。"""
+    total, count = 0, 0
+    if path.exists():
+        for f in path.rglob("*"):
+            if f.is_file():
+                try:
+                    total += f.stat().st_size
+                    count += 1
+                except OSError:
+                    pass
+    return total, count
+
+
+def _rm_dir_contents(path: Path) -> int:
+    """删目录下所有内容（保留目录本身），返回释放的字节数。"""
+    if not path.exists():
+        return 0
+    freed, _ = _dir_size(path)
+    for child in path.iterdir():
+        try:
+            if child.is_dir():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                child.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return freed
+
+
+def _train_logs_cleanables() -> dict:
+    """
+    GPT-SoVITS/logs/setsuna_light 里可清理的垃圾，分三类：
+      old_backups: _backups 里除最新一个以外的目录
+      old_ckpt:    _old_ckpt_* 目录（旧 checkpoint）
+      regen:       3-bert / 4-cnhubert / 5-wav32k / 7-sv_cn（可重算特征）
+    保留 logs_s1_v2Pro / logs_s2_v2Pro 与最新备份（续训要用）。
+    """
+    base = (SOVITS_ROOT / "logs" / "setsuna_light") if SOVITS_ROOT else None
+    out = {"base": base, "old_backups": 0, "old_ckpt": 0, "regen": 0, "total": 0}
+    if base is None or not base.exists():
+        return out
+    # 旧备份：_backups 里除最新一个以外
+    backups = sorted((base / "_backups").glob("*")) if (base / "_backups").exists() else []
+    for b in backups[:-1]:
+        sz, _ = _dir_size(b)
+        out["old_backups"] += sz
+    # 旧 checkpoint
+    for d in base.glob("_old_ckpt_*"):
+        sz, _ = _dir_size(d)
+        out["old_ckpt"] += sz
+    # 可重算特征
+    for sub in ("3-bert", "4-cnhubert", "5-wav32k", "7-sv_cn"):
+        sz, _ = _dir_size(base / sub)
+        out["regen"] += sz
+    out["total"] = out["old_backups"] + out["old_ckpt"] + out["regen"]
+    return out
+
+
+@app.get("/api/maintenance")
+def maintenance():
+    """垃圾统计：回收站 / 旧训练产物（可清理合计）/ 合成历史 / 项目日志。"""
+    trash_b, trash_c = _dir_size(DATA_DIR / "_trash")
+    clean = _train_logs_cleanables()
+    out_b, out_c = _dir_size(OUTPUT_DIR)
+    log_b, log_c = _dir_size(PROJECT_ROOT / "logs")
+    return {
+        "trash": {"bytes": trash_b, "count": trash_c},
+        "train_logs": {
+            "bytes": clean["total"],          # 可清理合计，前端直接显示"可清理 X GB"
+            "count": 0,
+            "path": str(clean["base"]) if clean["base"] else "",
+            "old_backups": clean["old_backups"],
+            "old_ckpt": clean["old_ckpt"],
+            "regen": clean["regen"],
+        },
+        "outputs": {"bytes": out_b, "count": out_c, "logs": {"bytes": log_b, "count": log_c}},
+    }
+
+
+class CleanRequest(BaseModel):
+    target: str = ""
+
+
+@app.post("/api/maintenance/clean")
+def maintenance_clean(req: CleanRequest):
+    """清理垃圾。target 白名单：trash | train_logs | outputs | logs。返回释放字节数。"""
+    t = req.target
+    freed = 0
+    if t == "trash":
+        freed = _rm_dir_contents(DATA_DIR / "_trash")
+    elif t == "train_logs":
+        clean = _train_logs_cleanables()
+        base = clean["base"]
+        if base is None or not base.exists():
+            raise HTTPException(status_code=404, detail="找不到 GPT-SoVITS 的训练日志目录")
+        # 旧 checkpoint
+        for d in base.glob("_old_ckpt_*"):
+            sz, _ = _dir_size(d)
+            shutil.rmtree(d, ignore_errors=True)
+            freed += sz
+        # 旧备份（除最新一个）
+        backups = sorted((base / "_backups").glob("*")) if (base / "_backups").exists() else []
+        for b in backups[:-1]:
+            sz, _ = _dir_size(b)
+            shutil.rmtree(b, ignore_errors=True)
+            freed += sz
+        # 可重算特征
+        for sub in ("3-bert", "4-cnhubert", "5-wav32k", "7-sv_cn"):
+            sz, _ = _dir_size(base / sub)
+            shutil.rmtree(base / sub, ignore_errors=True)
+            freed += sz
+    elif t == "outputs":
+        # 只删真正的合成记录（有 meta.json），保留 _eval/_compare
+        if OUTPUT_DIR.exists():
+            for job_dir in list(OUTPUT_DIR.iterdir()):
+                if job_dir.is_dir() and (job_dir / "meta.json").exists():
+                    sz, _ = _dir_size(job_dir)
+                    shutil.rmtree(job_dir, ignore_errors=True)
+                    freed += sz
+    elif t == "logs":
+        lp = PROJECT_ROOT / "logs"
+        if lp.exists():
+            for f in lp.glob("*"):
+                if f.is_file() and f.suffix.lower() in (".log", ".out", ".err"):
+                    try:
+                        freed += f.stat().st_size
+                        f.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+    else:
+        raise HTTPException(status_code=400, detail="清理目标不合法（只支持 trash / train_logs / outputs / logs）")
+    return {"ok": True, "target": t, "freed_bytes": freed}
 
 
 @app.get("/api/voices")

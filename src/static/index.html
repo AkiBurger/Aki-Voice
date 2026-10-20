@@ -123,6 +123,39 @@
         <div class="settings-note" id="themeNote" hidden></div>
         <input type="file" id="bgFileInput" accept="image/png,image/jpeg,image/webp" class="hidden">
         <input type="file" id="charFileInput" accept="image/png,image/jpeg,image/webp" class="hidden">
+
+        <div class="settings-sub">音色名称</div>
+        <div class="voice-name-row">
+          <input type="text" id="voiceNameInput" class="mini-input" placeholder="我的音色" maxlength="24">
+          <button type="button" id="voiceNameSaveBtn" class="btn-secondary btn-sm">保存</button>
+        </div>
+        <div class="settings-note">这个名字会显示在合成页和说话人名牌上。</div>
+
+        <div class="settings-sub">清理空间</div>
+        <div id="maintArea" class="maint-area">
+          <div class="maint-loading" id="maintLoading">正在读取占用…</div>
+          <div class="maint-row hidden" data-target="trash">
+            <span class="maint-name">回收站</span>
+            <span class="maint-size" data-size="trash">—</span>
+            <button type="button" class="btn-danger-link maint-clear" data-target="trash">清空</button>
+          </div>
+          <div class="maint-row hidden" data-target="train_logs">
+            <span class="maint-name">训练缓存</span>
+            <span class="maint-size" data-size="train_logs">—</span>
+            <button type="button" class="btn-danger-link maint-clear" data-target="train_logs">清空</button>
+          </div>
+          <div class="maint-row hidden" data-target="outputs">
+            <span class="maint-name">合成产物</span>
+            <span class="maint-size" data-size="outputs">—</span>
+            <button type="button" class="btn-danger-link maint-clear" data-target="outputs">清空</button>
+          </div>
+          <div class="maint-row hidden" data-target="logs">
+            <span class="maint-name">日志</span>
+            <span class="maint-size" data-size="logs">—</span>
+            <button type="button" class="btn-danger-link maint-clear" data-target="logs">清空</button>
+          </div>
+        </div>
+        <div class="settings-note" id="maintNote" hidden></div>
       </div>
     </div>
   </header>
@@ -202,7 +235,7 @@
         <div class="view" id="view-synth">
           <header class="page-head synth-head">
             <h2 class="page-title">语音合成</h2>
-            <p class="page-sub">写一句台词，让雪菜的声音替你开口。</p>
+            <p class="page-sub">写一句台词，让<span id="synthHintName">我的音色</span>的声音替你开口。</p>
           </header>
         </div>
 
@@ -227,7 +260,7 @@
                 浏览…
               </button>
               <input id="sourcePath" class="data-input" type="text"
-                     placeholder="点「浏览…」选文件夹，或直接粘贴路径，例如 D:\我的声音素材\雪菜">
+                     placeholder="点「浏览…」选文件夹，或直接粘贴路径，例如 D:\我的声音素材">
               <button type="button" id="scanBtn" class="btn-secondary btn-sm">
                 <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
                 扫描
@@ -352,6 +385,14 @@
                 <span id="trainBadge" class="badge badge-warn">空闲</span>
               </div>
               <div class="train-data" id="trainData">正在检查训练数据…</div>
+              <div class="train-note">训练完会自动启用最新一轮，可以在合成页音色里换回旧模型。</div>
+              <div id="trainDoneRow" class="train-done hidden">
+                <span id="trainDoneText">训练完成。</span>
+                <button type="button" id="gotoSynthBtn" class="btn-secondary btn-sm">
+                  <svg class="icon icon-sm" aria-hidden="true"><use href="#i-mic"/></svg>
+                  去合成试听
+                </button>
+              </div>
             </section>
 
             <section class="card">
@@ -520,7 +561,7 @@
     <div class="dialog-top">
       <div class="speaker">
         <span class="speaker-face" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg></span>
-        <b>雪菜</b><span class="speaker-cv">CV</span>
+        <b id="speakerName">我的音色</b><span class="speaker-cv">CV</span>
         <span class="speaker-tone" id="speakerTone">平静</span>
       </div>
       <div class="tone-detected" id="toneDetected" hidden>
@@ -528,7 +569,7 @@
         <span>自动判断为「<strong id="toneDetectedName">—</strong>」</span>
         <span class="tone-conf" id="toneDetectedConf"></span>
       </div>
-      <span class="dialog-hint">写一句台词，让雪菜替你开口。Ctrl + Enter 快速合成。</span>
+      <span class="dialog-hint">写一句台词，让<span id="dialogHintName">我的音色</span>替你开口。Ctrl + Enter 快速合成。</span>
     </div>
 
     <div class="dialog-main">
@@ -702,12 +743,13 @@
         <select id="voiceSelect" class="model-select" disabled>
           <option value="">加载中…</option>
         </select>
+        <div class="field-hint" id="currentModelLine"></div>
         <div class="model-actions">
           <button type="button" id="previewBtn" class="btn-secondary btn-sm" disabled title="试听这个模型的声音">
             <svg class="icon icon-sm" aria-hidden="true"><use href="#i-play"/></svg>
             试听
           </button>
-          <button type="button" id="renameModelBtn" class="btn-secondary btn-sm" disabled title="给这个模型起个名字">
+          <button type="button" id="renameModelBtn" class="btn-secondary btn-sm" disabled title="给音色起个名字">
             <svg class="icon icon-sm" aria-hidden="true"><use href="#i-pencil"/></svg>
             改名
           </button>

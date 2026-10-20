@@ -137,11 +137,14 @@ def _frontend():
     r = requests.get(B + "/static/index.html", timeout=10)
     r.raise_for_status()
     html = r.text
-    need = ["evalBtn", "trainStartBtn", "clearHistoryBtn", "advToggleBtn", "renameModelBtn", "translatedBox"]
+    need = ["evalBtn", "trainStartBtn", "clearHistoryBtn", "advToggleBtn",
+            "renameModelBtn", "translatedBox", "voiceSelect", "settingsPanel",
+            "tutorialBtn", "speakerName"]
     missing = [x for x in need if f'id="{x}"' not in html]
     assert not missing, f"缺少元素: {missing}"
     js = requests.get(B + "/static/app.js", timeout=10).text
-    assert "runEvaluation" in js and "startTraining" in js and "renameCurrentModel" in js
+    for fn in ("runEvaluation", "startTraining", "renameVoice", "activateModel", "applyVoiceName"):
+        assert fn in js, f"JS 缺少 {fn}"
     return f"HTML {len(html)} 字符, JS {len(js)} 字符, 元素齐全"
 
 

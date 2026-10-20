@@ -3,6 +3,7 @@
 训练任务管理：后台启动 data/setsuna/train.py，收集日志、解析进度，
 提供开始/停止/状态查询，训练完把新权重挂到引擎。
 """
+import json
 import os
 import re
 import subprocess
@@ -90,6 +91,45 @@ def _snapshot_existing_weights() -> dict:
     if gpt_dir.exists():
         snap["gpt"] = {p.name for p in gpt_dir.glob("*.ckpt")}
     return snap
+
+
+def _set_active_model(file_name: str):
+    """
+    把某个 SoVITS 权重写进 data/models.json 的 active（新结构 {active, names}）。
+    兼容旧 flat 格式（整体当作 names）。不动 names。
+    """
+    try:
+        models_file = PROJECT_ROOT / "data" / "models.json"
+        data = {}
+        if models_file.exists():
+            data = json.loads(models_file.read_text(encoding="utf-8"))
+        # 新结构 {active, names}；旧 flat dict 整体当作 names 迁移
+        if isinstance(data, dict) and "active" in data and "names" in data:
+            names = data.get("names") or {}
+        else:
+            names = data if isinstance(data, dict) else {}
+        models_file.parent.mkdir(parents=True, exist_ok=True)
+        models_file.write_text(
+            json.dumps({"active": file_name, "names": names}, ensure_ascii=False, indent=2),
+            encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _active_model_info() -> dict:
+    """当前启用模型的信息 {file, label, epoch}（读 models.json active）。"""
+    file_name = _state.get("active_model", "")
+    if not file_name:
+        try:
+            data = json.loads((PROJECT_ROOT / "data" / "models.json").read_text(encoding="utf-8"))
+            file_name = data.get("active", "") or ""
+        except Exception:
+            file_name = ""
+    if file_name:
+        m = re.search(r"_e(\d+)_", file_name)
+        return {"file": file_name, "label": Path(file_name).stem,
+                "epoch": int(m.group(1)) if m else 0}
+    return {"file": "", "label": "", "epoch": 0}
 
 
 def _waiter(proc):
@@ -186,6 +226,21 @@ def _attach_new_weights():
             else:
                 with _lock:
                     _lines.append(f"[自动挂载失败] GPT {name}: HTTP {r.status_code}")
+
+        # 训练收尾：把本次产出的最高轮数 SoVITS 记为 active，
+        # 用户训练完就能在模型列表里看到"当前启用"是新模型
+        best = None
+        best_epoch = -1
+        for name in _state["produced_weights"]["sv"]:
+            m = re.search(r"_e(\d+)_", name)
+            ep = int(m.group(1)) if m else -1
+            if ep > best_epoch:
+                best_epoch, best = ep, name
+        if best:
+            _set_active_model(best)
+            _state["active_model"] = best
+            with _lock:
+                _lines.append(f"[自动] 已把本次训练的最高轮数模型设为当前启用: {best}")
     except Exception as e:
         with _lock:
             _lines.append(f"[自动挂载失败] {e}")
@@ -278,6 +333,7 @@ def _start_inner(epochs_s2, epochs_s1, batch_s2, batch_s1,
         "lr_s1": float(lr_s1 or 0),
         "auto_eval": bool(auto_eval),
         "from_scratch": bool(from_scratch),
+        "active_model": "",
         "last_error": "",
         "stopped_by_user": False,
         "elapsed_final_sec": None,
@@ -369,6 +425,7 @@ def status() -> dict:
         "started_at": _state["started_at"],
         "finished_at": _state["finished_at"],
         "from_scratch": _state.get("from_scratch", True),
+        "active_model": _active_model_info(),
         "produced_weights": _state.get("produced_weights", {"sv": [], "gpt": []}),
         "epochs_s2": _state["epochs_s2"],
         "epochs_s1": _state["epochs_s1"],

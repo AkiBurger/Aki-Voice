@@ -401,6 +401,57 @@ a { color: var(--primary-deep); }
 #themeNote { font-size: 9.5px; }
 #themeNote.unsupported { color: var(--warn); border-top-color: rgba(224, 154, 0, .5); }
 
+/* ---- 设置面板：音色名称 / 清理空间 ---- */
+.voice-name-row { display: flex; gap: 6px; margin-top: 10px; }
+.mini-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, .8);
+  color: var(--ink);
+  font-size: 11.5px;
+  outline: none;
+}
+.mini-input:focus { border-color: var(--primary); }
+
+.maint-area { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.maint-loading { font-size: 9.5px; color: var(--ink-faint); }
+.maint-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .7);
+}
+.maint-name { font-size: 11px; font-weight: 700; color: var(--ink); width: 58px; flex-shrink: 0; }
+.maint-size { flex: 1 1 auto; min-width: 0; font-size: 9.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.maint-clear { height: 24px; padding: 0 8px; font-size: 9.5px; flex-shrink: 0; }
+.maint-clear:disabled { opacity: .4; pointer-events: none; }
+#maintNote { font-size: 9.5px; }
+#maintNote.unsupported { color: var(--warn); border-top-color: rgba(224, 154, 0, .5); }
+
+/* ---- 训练完成引导 ---- */
+.train-done {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(31, 168, 108, .4);
+  background: rgba(233, 251, 243, .7);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #127049;
+}
+.train-done .btn-secondary { height: 26px; font-size: 10.5px; }
+
 /* ---- 自定义角色立绘：背景之上、面板之下，不遮任何交互 ---- */
 .custom-char {
   position: fixed;

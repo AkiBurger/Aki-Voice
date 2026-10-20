@@ -50,6 +50,12 @@
     themeSupported: true,
     themeLoaded: false,
     tutorialData: { wav: 0, clean: 0, models: 0, evals: 0, history: 0 },
+    // 模型列表与启用（GET /api/models 契约）
+    models: [],               // [{id, file, epoch, label, default_name, renamed, active}]
+    activeModel: null,        // 当前启用的模型条目
+    activating: false,        // 正在切换模型（禁用下拉防连点）
+    voiceName: '',            // 音色显示名（后端 voice_name，空 = 我的音色）
+    trainDoneNotified: false, // 训练完成引导只提示一次
   };
 
   // ---------- 元素 ----------
@@ -221,6 +227,19 @@
     tutorialPanel: $('tutorialPanel'),
     tutorialCloseBtn: $('tutorialCloseBtn'),
     tutorialBody: $('tutorialBody'),
+    // 音色名动态化 / 模型启用 / 清理空间
+    speakerName: $('speakerName'),
+    synthHintName: $('synthHintName'),
+    dialogHintName: $('dialogHintName'),
+    currentModelLine: $('currentModelLine'),
+    trainDoneRow: $('trainDoneRow'),
+    trainDoneText: $('trainDoneText'),
+    gotoSynthBtn: $('gotoSynthBtn'),
+    voiceNameInput: $('voiceNameInput'),
+    voiceNameSaveBtn: $('voiceNameSaveBtn'),
+    maintArea: $('maintArea'),
+    maintLoading: $('maintLoading'),
+    maintNote: $('maintNote'),
   };
 
   // ---------- A 式主视觉背景（角色在右、左侧留白；表情 = 背景 120ms 交叉淡入） ----------
@@ -722,6 +741,9 @@
       document.body.classList.remove('voice-open', 'history-open');
       if (els.voicePanelBtn) els.voicePanelBtn.setAttribute('aria-expanded', 'false');
       if (els.historyBtn) els.historyBtn.setAttribute('aria-expanded', 'false');
+      // 打开设置时刷新音色名与空间占用
+      applyVoiceName(state.voiceName);
+      loadMaintenance();
     }
     syncDrawerScrim();
   }
@@ -1111,43 +1133,247 @@
     }
   }
 
+  // ---------- 音色名动态化：统一更新名牌/提示里所有带音色名的位置 ----------
+  function applyVoiceName(name) {
+    const final = String(name || '').trim() || '我的音色';
+    state.voiceName = final;
+    const targets = [els.speakerName, els.synthHintName, els.dialogHintName];
+    targets.forEach((el) => { if (el) el.textContent = final; });
+    const pageSub = document.querySelector('#view-synth .page-sub');
+    if (pageSub) {
+      const span = pageSub.querySelector('#synthHintName');
+      if (span) span.textContent = final;
+    }
+    if (els.voiceNameInput && document.activeElement !== els.voiceNameInput) {
+      els.voiceNameInput.value = state.voiceName;
+    }
+    // 侧边栏音色名与顶部徽章（模型名优先；没有模型时显示音色名）
+    const side = document.getElementById('sideModelName');
+    if (side && (!state.activeModel || (side.textContent === '—' || side.textContent === ''))) {
+      // 有模型时由 updateModelBadges 负责；这里只兜底
+    }
+  }
+
+  function modelLabel(m) {
+    if (!m) return '';
+    return String(m.label || m.default_name || m.name || '').trim();
+  }
+
+  function modelEpoch(m) {
+    return m && m.epoch != null ? m.epoch : '';
+  }
+
+  function updateCurrentModelLine() {
+    if (!els.currentModelLine) return;
+    if (state.activating) {
+      els.currentModelLine.textContent = '正在启用…';
+      return;
+    }
+    const m = state.activeModel;
+    if (!m) {
+      els.currentModelLine.textContent = '';
+      return;
+    }
+    const label = modelLabel(m) || '未命名';
+    const ep = modelEpoch(m);
+    // label 就是默认 eN 时不再重复显示（e2），否则带轮数（我的声音（e2））
+    const sameAsEpoch = ep !== '' && String(label) === 'e' + ep;
+    els.currentModelLine.textContent = '当前使用：' + label + (ep !== '' && !sameAsEpoch ? '（e' + ep + '）' : '');
+  }
+
   async function loadVoices() {
     try {
-      const resp = await api('/api/voices');
-      // 后端返回 {"voices": [...]}，兼容纯数组
-      const list = Array.isArray(resp) ? resp : (resp && Array.isArray(resp.voices) ? resp.voices : []);
-      state.voices = list;
-      // 音色列表刷新后重算预设里的「音色已失效」标签
+      const resp = await api('/api/models');
+      // 兼容旧响应：纯数组 / 无 active / 无 voice_name 都降级不报错
+      const list = Array.isArray(resp) ? resp : (resp && Array.isArray(resp.models) ? resp.models : []);
+      const activeId = resp && !Array.isArray(resp) ? resp.active : undefined;
+      const voiceName = resp && !Array.isArray(resp) && resp.voice_name ? String(resp.voice_name) : '';
+      state.models = list;
+      state.voices = list;   // 供预设/其它逻辑用
       try { renderPresets(); } catch (e) { /* 预设列表异常不影响音色 */ }
+
       els.voiceSelect.innerHTML = '';
-      if (state.voices.length === 0) {
+      if (list.length === 0) {
         const opt = document.createElement('option');
         opt.value = '';
         opt.textContent = '暂无可用音色';
         els.voiceSelect.appendChild(opt);
         els.voiceSelect.disabled = true;
+        state.activeModel = null;
+        if (els.renameModelBtn) els.renameModelBtn.disabled = true;
+        applyVoiceName(voiceName);
+        updateModelBadges();
+        updateCurrentModelLine();
         return;
       }
-      for (const v of state.voices) {
+      // 每个模型一个 option：value = file（激活用），label 优先自定义名
+      let selected = null;
+      let activeEntry = null;
+      for (const m of list) {
         const opt = document.createElement('option');
-        // 模型条目用模型 id 作为 value（后端据此切换权重）；零样本才用参考音频路径
-        opt.value = v.char === 'model' ? (v.name || v.path || '') : (v.path || v.name || '');
-        opt.textContent = v.display || v.label || v.name || '未命名';
-        if (v.file) opt.dataset.file = v.file;
+        opt.value = m.file || m.id || '';
+        opt.textContent = modelLabel(m) || ('e' + modelEpoch(m)) || '未命名';
+        if (m.file) opt.dataset.file = m.file;
+        if (m.epoch != null) opt.dataset.epoch = String(m.epoch);
         els.voiceSelect.appendChild(opt);
+        // 契约：id = 文件 stem 唯一；旧数据 id 可能重复（两个 e2），只取第一个匹配
+        const isActive = m.active === true ||
+          (activeId && (String(m.id) === String(activeId) || String(m.file) === String(activeId)));
+        if (isActive && !selected) {
+          selected = opt;
+          activeEntry = m;
+        }
       }
+      // 旧响应没有 active：默认第一个（保持原行为），不报错
+      if (!selected && els.voiceSelect.options.length) {
+        selected = els.voiceSelect.options[0];
+        activeEntry = list[0];
+      }
+      if (selected) els.voiceSelect.value = selected.value;
+      state.activeModel = activeEntry || null;
+
       els.voiceSelect.disabled = false;
       if (els.renameModelBtn) els.renameModelBtn.disabled = false;
+      applyVoiceName(voiceName);
       updateModelBadges();
-      // 记忆上次选择（localStorage 不可用时静默跳过，不能因此把音色列表判成加载失败）
-      let last = '';
-      try { last = localStorage.getItem('abv:voice') || ''; } catch (e) { last = ''; }
-      if (last && state.voices.some((v) => (v.path || v.name || v.display) === last || (v.char === 'model' && v.name === last))) {
-        els.voiceSelect.value = last;
-      }
+      updateCurrentModelLine();
     } catch (e) {
       // 音色接口失败不致命，保留"加载中"并提示
       els.voiceSelect.innerHTML = '<option value="">加载失败，点合成时请检查后端</option>';
+      if (els.currentModelLine) els.currentModelLine.textContent = '';
+    }
+  }
+
+  // ---------- 显式启用模型：POST /api/models/activate ----------
+  async function activateModel(file) {
+    if (state.activating) return;
+    // 记录当前 active 的文件，失败时回滚到这个
+    const prevFile = state.activeModel ? String(state.activeModel.file || state.activeModel.id || '') : '';
+    const target = state.models.find((m) => String(m.file || m.id) === String(file));
+    state.activating = true;
+    els.voiceSelect.disabled = true;
+    updateCurrentModelLine();
+    try {
+      const res = await api('/api/models/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: file }),
+      });
+      // 后端成功后重读列表，保证 active/名称一致
+      await loadVoices();
+      const label = res && res.model ? (res.model.label || res.model.default_name || res.model.name) : (target ? modelLabel(target) : '');
+      showToast('已启用 ' + (label || '新模型'), 2600);
+      // 引擎侧权重切换可能需要一点时间，提示用户
+    } catch (e) {
+      // 失败：回滚选中（旧后端 404 / 引擎 502 都走这里），给人话提示
+      if (prevFile) {
+        els.voiceSelect.value = prevFile;
+      }
+      showError('切换失败', String((e && e.message) || e) + '。可以再试一次，或先重启后端再切换。');
+    } finally {
+      state.activating = false;
+      els.voiceSelect.disabled = false;
+      updateModelBadges();
+      updateCurrentModelLine();
+    }
+  }
+
+  // ---------- 改音色显示名：POST /api/voice/name ----------
+  async function renameVoice() {
+    const cur = state.voiceName || '我的音色';
+    const name = await askPrompt('音色名称', '显示在合成页和说话人名牌上的名字。留空会恢复成「我的音色」。', cur);
+    if (name === null) return;   // 取消
+    try {
+      await api('/api/voice/name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name }),
+      });
+      applyVoiceName(name);
+      showToast('音色名已更新为「' + (name.trim() || '我的音色') + '」', 2400);
+    } catch (e) {
+      showError('保存失败', String((e && e.message) || e));
+    }
+  }
+
+  // ---------- 设置面板：音色名称保存 ----------
+  async function saveVoiceName() {
+    const name = (els.voiceNameInput ? els.voiceNameInput.value : '').trim();
+    try {
+      await api('/api/voice/name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name }),
+      });
+      applyVoiceName(name);
+      showToast('音色名已保存', 2200);
+    } catch (e) {
+      showError('保存失败', String((e && e.message) || e));
+    }
+  }
+
+  // ---------- 清理空间：体积展示 + 清空 ----------
+  const MAINT_LABEL = { trash: '回收站', train_logs: '训练缓存', outputs: '合成产物', logs: '日志' };
+
+  function fmtBytes(n) {
+    if (n == null || !isFinite(Number(n))) return '—';
+    const b = Number(n);
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1024 * 1024 * 1024) return (b / 1024 / 1024).toFixed(1) + ' MB';
+    return (b / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+  }
+
+  async function loadMaintenance() {
+    if (!els.maintArea) return;
+    try {
+      const d = await api('/api/maintenance');
+      const rows = els.maintArea.querySelectorAll('.maint-row');
+      let any = false;
+      rows.forEach((row) => {
+        const target = row.dataset.target;
+        const info = (d && d[target]) || {};
+        const sizeEl = row.querySelector('.maint-size');
+        if (sizeEl) sizeEl.textContent = fmtBytes(info.bytes) + (info.count ? ' · ' + info.count + ' 个' : '');
+        const has = info && info.bytes > 0;
+        row.classList.toggle('hidden', false);
+        const btn = row.querySelector('.maint-clear');
+        if (btn) btn.disabled = !has;
+        if (has) any = true;
+      });
+      if (els.maintLoading) els.maintLoading.classList.add('hidden');
+      if (els.maintNote) {
+        els.maintNote.hidden = any;
+        els.maintNote.textContent = '目前没有可清理的临时文件。';
+        els.maintNote.classList.remove('unsupported');
+      }
+    } catch (e) {
+      // 后端不支持时提示，不报错
+      if (els.maintLoading) els.maintLoading.classList.add('hidden');
+      els.maintArea.querySelectorAll('.maint-row').forEach((r) => r.classList.add('hidden'));
+      if (els.maintNote) {
+        els.maintNote.hidden = false;
+        els.maintNote.classList.add('unsupported');
+        els.maintNote.textContent = '当前后端版本不支持清理统计。';
+      }
+    }
+  }
+
+  async function cleanMaintenance(target) {
+    const label = MAINT_LABEL[target] || target;
+    const ok = await askConfirm('清空' + label, '把' + label + '里的文件清空。已保存的素材、权重和评测记录不受影响。', '清空');
+    if (!ok) return;
+    try {
+      const res = await api('/api/maintenance/clean', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: target }),
+      });
+      const freed = res && res.freed_bytes != null ? res.freed_bytes : 0;
+      showToast('已释放 ' + fmtBytes(freed), 2600);
+      await loadMaintenance();
+    } catch (e) {
+      showError('清理失败', String((e && e.message) || e));
     }
   }
 
@@ -2073,7 +2299,7 @@
   async function scanSource() {
     const path = (els.sourcePath && els.sourcePath.value || '').trim();
     if (!path) {
-      showError('还没填路径', '把音频文件夹的路径粘贴进来（比如 C:\\Users\\123\\Desktop\\白2\\人声\\雪菜）。');
+      showError('还没填路径', '把音频文件夹的路径粘贴进来（比如 D:\\我的声音素材）。');
       return;
     }
     els.scanResult.textContent = '正在扫描…';
@@ -2215,6 +2441,22 @@
 
   let trainStoppedByUser = false;
 
+  // 训练完成引导：显示「训练完成：已启用 X」+ 去合成试听
+  function updateTrainDoneLine() {
+    if (!els.trainDoneRow) return;
+    const m = state.activeModel;
+    const label = m ? (modelLabel(m) || ('e' + modelEpoch(m))) : '最新模型';
+    els.trainDoneText.textContent = '训练完成：已启用 ' + label + '。';
+    els.trainDoneRow.classList.remove('hidden');
+  }
+
+  function showTrainFailure(reason) {
+    if (!els.trainDoneRow) return;
+    els.trainDoneText.textContent = reason ? '训练没有成功：' + reason : '训练没有成功。';
+    els.trainDoneRow.classList.remove('hidden');
+    if (els.gotoSynthBtn) els.gotoSynthBtn.classList.add('hidden');
+  }
+
   async function refreshTrainStatus() {
     if (!els.trainBadge) return;
     try {
@@ -2256,7 +2498,25 @@
         clearInterval(trainTimer);
         trainTimer = null;
         loadTrainData();
-        loadVoices();
+        await loadVoices();   // 刷新模型列表（训练完自动启用最新一轮）
+        if (st.success === true) {
+          if (!state.trainDoneNotified) {
+            state.trainDoneNotified = true;
+            showToast('训练完成，最新一轮已启用。', 3200);
+          }
+          updateTrainDoneLine();
+        } else if (st.success === false && !stopped) {
+          showTrainFailure(st.last_error || '');
+        }
+      } else if (st.success === true) {
+        // 启动/切页时也补显示完成引导（会话内只 toast 一次）
+        if (!state.trainDoneNotified) {
+          state.trainDoneNotified = true;
+          showToast('训练完成，最新一轮已启用。', 3200);
+        }
+        updateTrainDoneLine();
+      } else if (st.success === false && !stopped) {
+        showTrainFailure(st.last_error || '');
       }
     } catch (e) {
       /* 状态接口失败忽略 */
@@ -2279,6 +2539,9 @@
     if (!ok) return;
     els.trainStartBtn.disabled = true;
     trainStoppedByUser = false;
+    state.trainDoneNotified = false;
+    if (els.trainDoneRow) els.trainDoneRow.classList.add('hidden');
+    if (els.gotoSynthBtn) els.gotoSynthBtn.classList.remove('hidden');
     setCharacter('thinking');
     try {
       await api('/api/train/start', {
@@ -2543,35 +2806,6 @@
     }
   }
 
-  // ---------- 模型改名 ----------
-  async function renameCurrentModel() {
-    const idx = els.voiceSelect.selectedIndex;
-    const opt = idx >= 0 ? els.voiceSelect.options[idx] : null;
-    const file = opt && opt.dataset ? opt.dataset.file : '';
-    if (!file) {
-      showError('没有可改名的模型', '先等模型列表加载出来。');
-      return;
-    }
-    const old = opt.textContent;
-    const input = window.prompt('给这个模型起个名字（留空 = 恢复默认 e 编号）\n当前：' + old, old);
-    if (input === null) return;   // 取消
-    try {
-      const res = await api('/api/models/rename', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file: file, name: input }),
-      });
-      await loadVoices();
-      const newName = res && res.model ? (res.model.display || res.model.name) : input;
-      // 重新选中刚改名的那个
-      for (const o of els.voiceSelect.options) {
-        if (o.dataset && o.dataset.file === file) { els.voiceSelect.value = o.value; o.selected = true; break; }
-      }
-    } catch (e) {
-      showError('改名失败', String(e.message || e));
-    }
-  }
-
   // ---------- 预设（浏览器本地存储） ----------
   const PRESET_KEY = 'abv:presets';
 
@@ -2585,12 +2819,15 @@
     }
   }
 
-  // 按下拉框的 value 找音色：模型条目 value = 模型名，零样本 value = 参考音频路径
+  // 按下拉框的 value（模型 file）找模型条目；兼容旧预设里存的名字/路径
   function findVoice(value) {
     if (!value) return null;
-    return state.voices.find((v) =>
-      (v.char === 'model' ? (v.name || v.path) === value : (v.path || v.name) === value)
-    ) || null;
+    return state.voices.find((v) => {
+      if (v.char === 'model') return (v.name || v.path) === value;
+      // 新契约模型条目：file 或 id 匹配
+      if (v.file || v.id) return String(v.file || v.id) === String(value) || String(v.id) === String(value) || String(v.name) === String(value);
+      return (v.path || v.name) === value;
+    }) || null;
   }
 
   function savePresets(list) {
@@ -3195,6 +3432,22 @@
   bindThemeSlot('bg', els.bgUploadBtn, els.bgResetBtn, els.bgFileInput);
   bindThemeSlot('char', els.charUploadBtn, els.charResetBtn, els.charFileInput);
 
+  // ---------- 音色名称（设置面板） / 清理空间 / 训练完成引导 ----------
+  if (els.voiceNameSaveBtn) els.voiceNameSaveBtn.addEventListener('click', saveVoiceName);
+  if (els.voiceNameInput) {
+    els.voiceNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); saveVoiceName(); }
+    });
+  }
+  if (els.gotoSynthBtn) {
+    els.gotoSynthBtn.addEventListener('click', () => switchView('synth'));
+  }
+  if (els.maintArea) {
+    els.maintArea.querySelectorAll('.maint-clear').forEach((btn) => {
+      btn.addEventListener('click', () => cleanMaintenance(btn.dataset.target));
+    });
+  }
+
   // ---------- 教程：开/关/点外关闭 ----------
   if (els.tutorialBtn) {
     els.tutorialBtn.addEventListener('click', (e) => {
@@ -3265,7 +3518,7 @@
   if (els.backlogToggle) els.backlogToggle.addEventListener('click', () => toggleBacklog());
 
   els.savePresetBtn.addEventListener('click', saveCurrentPreset);
-  if (els.renameModelBtn) els.renameModelBtn.addEventListener('click', renameCurrentModel);
+  if (els.renameModelBtn) els.renameModelBtn.addEventListener('click', renameVoice);
   if (els.evalBtn) els.evalBtn.addEventListener('click', runEvaluation);
   if (els.trainStartBtn) els.trainStartBtn.addEventListener('click', startTraining);
   if (els.scanBtn) els.scanBtn.addEventListener('click', scanSource);
@@ -3426,13 +3679,17 @@
   });
 
   els.voiceSelect.addEventListener('change', () => {
-    if (els.voiceSelect.value) {
-      // 记不住选择不影响使用，localStorage 不可用时静默跳过
-      try { localStorage.setItem('abv:voice', els.voiceSelect.value); } catch (e) { /* 忽略 */ }
-      // 质检/标注对应的是数据本身，换模型不影响，不要清
+    if (state.activating) return;
+    const file = els.voiceSelect.value;
+    if (!file) return;
+    // 未变化（程序设置 value 不触发 change；用户选同一项也不触发），安全起见检查
+    const cur = state.activeModel;
+    if (cur && String(cur.file || cur.id) === String(file)) {
       updateModelBadges();
-      setCharacter('surprised');
+      updateCurrentModelLine();
+      return;
     }
+    activateModel(file);
   });
 
   // 参考音频选择：记住选择并更新提示
