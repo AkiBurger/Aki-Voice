@@ -27,7 +27,8 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -68,6 +69,64 @@ app = FastAPI(title="AkiBurger Voice")
 
 _synth_lock = threading.Lock()        # 同一时间只跑一个合成（防并发抢显存）
 _eval_lock = threading.Lock()          # 评测互斥
+_synth_busy_since = None               # 当前合成开始时间（/api/synth/status 用）
+
+
+# ---------- 参数校验错误中文化 ----------
+# 前端字段名 → 中文名；Pydantic 422 的报错翻译成人话（保留 422 状态码）
+FIELD_CN = {
+    "epochs_s2": "音色轮数", "epochs_s1": "韵律轮数",
+    "batch_s2": "音色批量", "batch_s1": "韵律批量",
+    "lr_s2": "音色学习率", "lr_s1": "韵律学习率",
+    "save_every_s2": "音色保存间隔", "save_every_s1": "韵律保存间隔",
+    "speed": "语速", "seed": "随机种子", "temperature": "变化度",
+    "top_k": "采样范围", "repetition_penalty": "重复惩罚",
+    "text": "文案", "lang": "输出语言", "input_lang": "输入语言",
+    "voice": "模型", "ref": "参考音频", "tone": "语气",
+    "auto_eval": "自动评测", "from_scratch": "训练方式",
+    "time": "时间", "name": "名字", "file": "文件名",
+    "max_samples": "导入数量", "all": "全部",
+    "path": "路径", "wav": "音频", "batch": "回收批次",
+}
+
+
+def _translate_validation_msg(msg: str, field_cn: str) -> str:
+    """把 Pydantic v2 的英文校验信息翻成中文人话。"""
+    m = re.search(r"greater than or equal to ([\d.]+)", msg)
+    if m:
+        return f"{field_cn}不能小于 {m.group(1)}"
+    m = re.search(r"less than or equal to ([\d.]+)", msg)
+    if m:
+        return f"{field_cn}不能大于 {m.group(1)}"
+    m = re.search(r"greater than ([\d.]+)", msg)
+    if m:
+        return f"{field_cn}必须大于 {m.group(1)}"
+    m = re.search(r"less than ([\d.]+)", msg)
+    if m:
+        return f"{field_cn}必须小于 {m.group(1)}"
+    if "valid integer" in msg:
+        return f"{field_cn}必须是整数"
+    if "valid number" in msg or "finite number" in msg:
+        return f"{field_cn}必须是数字"
+    if "required" in msg:
+        return f"缺少参数：{field_cn}"
+    if "string_too_long" in msg or "too long" in msg:
+        return f"{field_cn}太长了"
+    return f"{field_cn}参数不合法（{msg[:60]}）"
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """422 中文化：detail 直接给可读的中文句子，状态码保持 422。"""
+    parts = []
+    for err in exc.errors():
+        loc = list(err.get("loc", []))
+        field = str(loc[-1]) if loc else "参数"
+        if loc and loc[0] == "body" and field not in FIELD_CN:
+            pass  # 不在映射里的字段用原名
+        cn = FIELD_CN.get(field, field)
+        parts.append(_translate_validation_msg(err.get("msg", ""), cn))
+    return JSONResponse(status_code=422, content={"detail": "；".join(parts) or "参数不合法"})
 
 
 @app.get("/", include_in_schema=False)
@@ -816,12 +875,18 @@ def synthesize_text(req: SynthesizeRequest):
     if len(raw_text) > 5000:
         raise HTTPException(status_code=400, detail=f"文本太长了（{len(raw_text)} 字），单次最多 5000 字，请分段合成")
     # 同一时间只跑一个合成，避免并发抢显存
+    # 锁被占时区分原因：评测也拿 _synth_lock，给前端不同的提示文案
     if not _synth_lock.acquire(blocking=False):
+        if _eval_lock.locked():
+            raise HTTPException(status_code=429, detail="评测进行中，等它跑完再合成")
         raise HTTPException(status_code=429, detail="正在合成上一段，等它完成再点")
+    global _synth_busy_since
+    _synth_busy_since = datetime.now().isoformat(timespec="seconds")
     try:
         return _do_synthesize(req, raw_text)
     finally:
         _synth_lock.release()
+        _synth_busy_since = None
 
 
 def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
@@ -978,38 +1043,51 @@ def _do_synthesize(req: "SynthesizeRequest", raw_text: str):
     }
 
 
+@app.get("/api/synth/status")
+def synth_status():
+    """
+    合成忙状态（前端在批量停止后轮询，等服务端收尾）。
+    只读、无副作用：busy = _synth_lock 是否被占（合成或评测都在用它）。
+    """
+    return {
+        "busy": _synth_lock.locked(),
+        "since": _synth_busy_since,
+        "reason": "评测" if (_synth_lock.locked() and _eval_lock.locked()) else
+                  ("合成" if _synth_lock.locked() else ""),
+    }
+
+
 @app.get("/api/history")
 def history():
     """最近 20 条合成记录（只认有 meta.json 的真正合成记录，子目录如 ab_test 不算）。"""
-    items = []
+    valid_dirs = []
     if OUTPUT_DIR.exists():
-        for job_dir in sorted(OUTPUT_DIR.iterdir(), reverse=True):
-            if not job_dir.is_dir():
-                continue
-            meta_file = job_dir / "meta.json"
-            # 没有 meta.json 的目录（比如手动放的对比样本）不算历史记录
-            if not meta_file.exists():
-                continue
-            meta = {}
-            try:
-                meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-            full = job_dir / "full.wav"
-            items.append({
-                "time": job_dir.name,
-                "text": meta.get("text", ""),
-                "lang": meta.get("lang", ""),
-                "voice": meta.get("voice", ""),
-                "tone": meta.get("tone", ""),
-                "audio_url": f"/static/output/{job_dir.name}/full.wav" if full.exists() else None,
-                "elapsed_ms": meta.get("elapsed_ms", 0),
-                "seed": meta.get("seed", -1),
-                "created_at": meta.get("created_at", ""),
-            })
-            if len(items) >= 20:
-                break
-    return {"history": items}
+        for job_dir in OUTPUT_DIR.iterdir():
+            if job_dir.is_dir() and (job_dir / "meta.json").exists():
+                valid_dirs.append(job_dir)
+    valid_dirs.sort(reverse=True)
+    total = len(valid_dirs)
+
+    items = []
+    for job_dir in valid_dirs[:20]:
+        meta = {}
+        try:
+            meta = json.loads((job_dir / "meta.json").read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        full = job_dir / "full.wav"
+        items.append({
+            "time": job_dir.name,
+            "text": meta.get("text", ""),
+            "lang": meta.get("lang", ""),
+            "voice": meta.get("voice", ""),
+            "tone": meta.get("tone", ""),
+            "audio_url": f"/static/output/{job_dir.name}/full.wav" if full.exists() else None,
+            "elapsed_ms": meta.get("elapsed_ms", 0),
+            "seed": meta.get("seed", -1),
+            "created_at": meta.get("created_at", ""),
+        })
+    return {"history": items, "total": total}
 
 
 def _safe_job_dir(stamp: str) -> Path:
@@ -1182,14 +1260,16 @@ def annotation_save(req: AnnotationSaveRequest):
 # 训练：一键开练（后台跑，界面可看进度）
 # ============================================================
 class TrainStartRequest(BaseModel):
-    epochs_s2: int = 6          # 音色模型轮数
-    epochs_s1: int = 8          # 韵律模型轮数
-    batch_s2: int = 2           # 音色模型批量（8G 显存建议 2）
-    batch_s1: int = 4           # 韵律模型批量
-    save_every_s2: int = 2      # 音色每几轮存一次
-    save_every_s1: int = 4      # 韵律每几轮存一次
-    lr_s2: float = 0.0          # 音色学习率（0 = 用默认）
-    lr_s1: float = 0.0          # 韵律学习率（0 = 用默认）
+    # 范围限制：越界直接 422（中文化提示），不再靠接口里钳位静默改值
+    # （钳位会让 epochs_s2=99 变成 20 直接开练 —— 之前就是这样误触发了训练）
+    epochs_s2: int = Field(default=6, ge=1, le=20)      # 音色模型轮数
+    epochs_s1: int = Field(default=8, ge=1, le=30)      # 韵律模型轮数
+    batch_s2: int = Field(default=2, ge=1, le=8)        # 音色模型批量（8G 显存建议 2）
+    batch_s1: int = Field(default=4, ge=1, le=16)       # 韵律模型批量
+    save_every_s2: int = Field(default=2, ge=1, le=20)  # 音色每几轮存一次
+    save_every_s1: int = Field(default=4, ge=1, le=30)  # 韵律每几轮存一次
+    lr_s2: float = Field(default=0.0, ge=0.0, le=0.1)   # 音色学习率（0 = 用默认）
+    lr_s1: float = Field(default=0.0, ge=0.0, le=0.1)   # 韵律学习率（0 = 用默认）
     auto_eval: bool = False     # 训完自动评测
     from_scratch: bool = True   # 从零训练（False = 在已有进度上续训）
 

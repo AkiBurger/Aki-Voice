@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -20,8 +20,9 @@ namespace AkiBurgerVoice
     // ============================================================
     //  AkiBurger Voice · 启动器 v4（アニメ・ゲーム HOME）
     //  视觉规范：design-system/akiburger-voice/MASTER-v3.md
-    //  素材：scene-studio + char-idle/thinking/happy/sad（本地原创）
-    //  原则：静态优先（仅状态灯呼吸 / 进度流光 / 320ms 启动 wipe）
+    //  素材：官方 A 式主视觉（樱花天空 + 右侧少女，纯 cover 裁切，无拼接/烘焙）；
+    //        面板/底栏玻璃与左侧白纱全部由代码绘制。
+    //  原则：静态优先（仅状态灯呼吸 / 进度流光 / 360ms 启动 wipe）
     //  功能：完全保留旧版启动流程（端口/路径/命令未改）
     // ============================================================
     public class Launcher : Form
@@ -218,8 +219,8 @@ namespace AkiBurgerVoice
             ctaRect = new RectangleF(44f, 480f, 256f, 44f);
             dataRect = new RectangleF(316f, 482f, 160f, 40f);
             closeRect = new RectangleF(492f, 482f, 100f, 40f);
-            retryRect = new RectangleF(324f, 372f, 116f, 30f);
-            logButtonRect = new RectangleF(324f, 408f, 116f, 30f);
+            retryRect = new RectangleF(66f, 424f, 110f, 26f);
+            logButtonRect = new RectangleF(186f, 424f, 110f, 26f);
 
             animTimer = new System.Windows.Forms.Timer();
             animTimer.Interval = 40;
@@ -1409,6 +1410,7 @@ namespace AkiBurgerVoice
             float uiAlpha = splashDone ? 1f : Intro(t, 0.10f, 0.22f);
             if (uiAlpha > 0.01f)
             {
+                DrawLeftScrim(g, uiAlpha);
                 Stopwatch sw = paintLogEnabled ? Stopwatch.StartNew() : null;
                 DrawLogoBlock(g, uiAlpha);
                 if (sw != null) { sw.Stop(); logoAccMs += sw.Elapsed.TotalMilliseconds; sw = Stopwatch.StartNew(); }
@@ -1423,6 +1425,20 @@ namespace AkiBurgerVoice
             Stopwatch sw2 = paintLogEnabled ? Stopwatch.StartNew() : null;
             DrawSplashOverlay(g, t);
             if (sw2 != null) { sw2.Stop(); splashAccMs += sw2.Elapsed.TotalMilliseconds; }
+        }
+
+        // 左侧代码绘制白纱：保证 LOGO/状态文字在亮色樱花背景上的对比；不改背景图。
+        // 范围收窄到面板右侧附近，避免把人物压灰/压暗。
+        void DrawLeftScrim(Graphics g, float a)
+        {
+            using (LinearGradientBrush b = MakeGradient(new RectangleF(0f, 0f, 500f, H), 0f,
+                new Color[] { Color.FromArgb((int)(68 * a), 255, 255, 255), Color.FromArgb((int)(22 * a), 255, 255, 255), Color.FromArgb(0, 255, 255, 255) },
+                new float[] { 0f, 0.55f, 1f }))
+                g.FillRectangle(b, 0f, 0f, 500f, H);
+            using (LinearGradientBrush b = MakeGradient(new RectangleF(0f, 0f, 560f, 180f), 90f,
+                new Color[] { Color.FromArgb((int)(56 * a), 255, 255, 255), Color.FromArgb(0, 255, 255, 255) },
+                new float[] { 0f, 1f }))
+                g.FillRectangle(b, 0f, 0f, 560f, 180f);
         }
 
         void DrawLogoBlock(Graphics g, float a)
@@ -1475,43 +1491,59 @@ namespace AkiBurgerVoice
 
         void DrawStatusPanel(Graphics g, float a)
         {
-            RectangleF panel = new RectangleF(28f, 92f, 426f, 262f);
+            // 面板 328 逻辑宽（左边缘 x=12，右边缘 x=340）：与人物脸颊保持 ~47px、眼睛 ~90px 安全距离
+            RectangleF panel = new RectangleF(12f, 88f, 328f, 268f);
             GlassPanel(g, panel, 20f, (int)(214 * a));
 
             using (SolidBrush b = new SolidBrush(A(PINK_DEEP, 0.95f * a)))
-                g.FillRectangle(b, 48f, 110f, 7f, 7f);
-            DrawTracked(g, "SYSTEM STATUS", fontMono10, A(INK_MUTED, 0.95f * a), 64f, 105f, 2.4f);
-            DrawText(g, "启动检查", fontSans11, A(INK_MUTED, 0.9f * a), new RectangleF(300f, 104f, 132f, 16f), SfRight);
-            using (Pen pen = new Pen(A(LINE, a), 1f)) g.DrawLine(pen, 48f, 126f, 434f, 126f);
+                g.FillRectangle(b, 28f, 106f, 7f, 7f);
+            DrawTracked(g, "SYSTEM STATUS", fontMono10, A(INK_MUTED, 0.95f * a), 42f, 101f, 2.4f);
+            DrawText(g, "启动检查", fontSans11, A(INK_MUTED, 0.9f * a), new RectangleF(210f, 100f, 114f, 16f), SfRight);
+            using (Pen pen = new Pen(A(LINE, a), 1f)) g.DrawLine(pen, 28f, 122f, 324f, 122f);
 
             for (int i = 0; i < rows.Length; i++)
-                DrawStatusRow(g, rows[i], i, 140f + i * 54f, a);
+                DrawStatusRow(g, rows[i], i, 132f + i * 54f, a);
 
             DrawText(g, stageNote, fontSans105, A(INK_MUTED, 0.95f * a),
-                new RectangleF(48f, 302f, 310f, 16f), SfNearEllipsis);
+                new RectangleF(28f, 298f, 224f, 16f), SfNearEllipsis);
             DrawText(g, ((int)Math.Round(progress)).ToString() + "%", fontMono10, A(BLUE_DEEP, a),
-                new RectangleF(374f, 302f, 60f, 16f), SfRight);
-            DrawProgressBar(g, new RectangleF(48f, 324f, 386f, 8f), a);
+                new RectangleF(264f, 298f, 60f, 16f), SfRight);
+            DrawProgressBar(g, new RectangleF(28f, 320f, 296f, 8f), a);
             if (fatalTitle == null)
             {
                 DrawText(g, "翻译 " + translateNote, fontSans10, A(INK_FAINT, 0.95f * a),
-                    new RectangleF(300f, 333f, 134f, 14f), SfRight);
+                    new RectangleF(210f, 332f, 114f, 14f), SfRight);
             }
         }
 
         void DrawStatusRow(Graphics g, ServiceStatus row, int index, float y, float a)
         {
             Color stateColor = StateColor(row.State);
-            DrawTracked(g, row.Code, fontMono9, A(INK_FAINT, 0.9f * a), 48f, y + 4f, 1.4f);
-            DrawLamp(g, 80f, y + 19f, stateColor, row.State, a);
-            DrawText(g, row.Name, fontStatus, A(INK, a), 98f, y + 1f);
+            DrawTracked(g, row.Code, fontMono9, A(INK_FAINT, 0.9f * a), 28f, y + 4f, 1.4f);
+            DrawLamp(g, 56f, y + 19f, stateColor, row.State, a);
+            DrawText(g, row.Name, fontStatus, A(INK, a), 74f, y + 1f);
             DrawText(g, StateLabel(row.State), fontSans12, A(stateColor, a),
-                new RectangleF(320f, y + 6f, 114f, 16f), SfRight);
-            DrawText(g, row.Detail, fontSans105, A(INK_MUTED, 0.92f * a),
-                new RectangleF(98f, y + 29f, 300f, 16f), SfNearEllipsis);
+                new RectangleF(230f, y + 6f, 94f, 16f), SfRight);
+
+            // 模型行：两个权重文件名换行显示（SoVITS / GPT），避免溢出
+            string detail = row.Detail ?? "";
+            if (index == 2 && detail.IndexOf(" + ") >= 0)
+            {
+                string[] parts = detail.Split(new string[] { " + " }, StringSplitOptions.None);
+                DrawText(g, "SoVITS · " + parts[0], fontSans10, A(INK_MUTED, 0.92f * a),
+                    new RectangleF(74f, y + 26f, 242f, 14f), SfNearEllipsis);
+                if (parts.Length > 1)
+                    DrawText(g, "GPT · " + parts[1], fontSans10, A(INK_MUTED, 0.92f * a),
+                        new RectangleF(74f, y + 39f, 242f, 14f), SfNearEllipsis);
+            }
+            else
+            {
+                DrawText(g, detail, fontSans105, A(INK_MUTED, 0.92f * a),
+                    new RectangleF(74f, y + 28f, 242f, 16f), SfNearEllipsis);
+            }
             if (index < 2)
             {
-                using (Pen pen = new Pen(A(LINE, 0.8f * a), 1f)) g.DrawLine(pen, 48f, y + 51f, 434f, y + 51f);
+                using (Pen pen = new Pen(A(LINE, 0.8f * a), 1f)) g.DrawLine(pen, 28f, y + 51f, 324f, y + 51f);
             }
         }
 
@@ -1663,19 +1695,17 @@ namespace AkiBurgerVoice
         {
             float age = (float)clock.Elapsed.TotalSeconds - fatalAt;
             float slide = EaseOutCubic(Clamp01(age / 0.2f));
-            RectangleF card = new RectangleF(28f, 360f + (1f - slide) * 8f, 426f, 94f);
-            retryRect = new RectangleF(card.X + 296f, card.Y + 12f, 116f, 30f);
-            logButtonRect = new RectangleF(card.X + 296f, card.Y + 48f, 116f, 30f);
+            RectangleF card = new RectangleF(20f, 364f + (1f - slide) * 8f, 340f, 96f);
+            retryRect = new RectangleF(card.X + 46f, card.Y + 60f, 110f, 26f);
+            logButtonRect = new RectangleF(card.X + 166f, card.Y + 60f, 110f, 26f);
 
             GlassPanel(g, card, 18f, (int)(226 * a));
             using (GraphicsPath p = RoundRectPath(new RectangleF(card.X + 8f, card.Y + 12f, 4f, card.Height - 24f), 2f))
             using (SolidBrush b = new SolidBrush(A(DANGER, 0.9f * a)))
                 g.FillPath(b, p);
-            DrawWarnIcon(g, card.X + 30f, card.Y + 34f, a);
+            DrawWarnIcon(g, card.X + 28f, card.Y + 32f, a);
             DrawText(g, fatalHuman, fontSans105, A(INK, a),
-                new RectangleF(card.X + 50f, card.Y + 12f, 236f, 40f), SfWrap);
-            DrawText(g, "日志 " + logPath, fontMono9, A(INK_MUTED, 0.9f * a),
-                new RectangleF(card.X + 50f, card.Y + 56f, 236f, 14f), SfNearEllipsis);
+                new RectangleF(card.X + 46f, card.Y + 10f, 258f, 44f), SfWrap);
             DrawSmallButton(g, retryRect, "重试", hoverBtn == 5, pressBtn == 5, a, true);
             DrawSmallButton(g, logButtonRect, "查看日志", hoverBtn == 6, pressBtn == 6, a, false);
         }

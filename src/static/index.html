@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AkiBurger Voice · 合成台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23EEF6FF'/><circle cx='50' cy='50' r='22' fill='%232F7CF6'/><circle cx='62' cy='38' r='8' fill='%23FF8FC7'/></svg>">
-<link rel="stylesheet" href="styles.css?v=20261020v5">
+<link rel="stylesheet" href="styles.css?v=20261020v7">
 <link rel="preload" as="image" href="assets/hero-idle.webp">
 </head>
 <body data-view="synth">
 
 <!-- 跳到主内容（无障碍：页面首个可聚焦元素） -->
-<a class="skip-link" href="#main">跳到主内容</a>
+<a class="skip-link" href="#contentScroll">跳到主内容</a>
 
 <!-- ============================================================
      内联 SVG 图标 sprite（Lucide 风格，线性描边，无 emoji 图标）
@@ -73,6 +73,12 @@
       <span id="translatorBadge" class="badge badge-neutral" title="本地翻译引擎状态">翻译 —</span>
       <span id="topModelBadge" class="badge badge-neutral" title="当前音色模型">模型 —</span>
       <span class="badge badge-neutral badge-version">v0.3.0</span>
+      <button type="button" id="historyBtn" class="icon-btn compact-only" aria-label="打开历史记录" aria-expanded="false" aria-controls="backlogDrawer" title="历史记录">
+        <svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>
+      </button>
+      <button type="button" id="voicePanelBtn" class="icon-btn voice-open-btn" aria-label="打开声の設定" aria-expanded="false" aria-controls="voicePanel" title="声の設定">
+        <svg class="icon" aria-hidden="true"><use href="#i-volume-2"/></svg>
+      </button>
       <button type="button" id="settingsBtn" class="icon-btn" aria-label="设置" aria-expanded="false" aria-controls="settingsPanel" title="设置">
         <svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>
       </button>
@@ -150,8 +156,25 @@
   </nav>
 
   <!-- 角色直接画在 A 式主视觉背景里：表情切换 = 背景图 120ms 淡入淡出 -->
-  <!-- ================= 页面切换斜切面板 ================= -->
-  <div class="page-veil" id="pageVeil" aria-hidden="true"><i></i><i></i></div>
+  <!-- ================= 页面切换多层转场 ================= -->
+  <div class="page-veil" id="pageVeil" aria-hidden="true" data-type="a" data-dir="fwd">
+    <!-- A：跨区 cut-in（深蓝块 + 速度线 + 页面名贴纸） -->
+    <div class="veil-a">
+      <i class="veil-a-block"></i>
+      <span class="veil-a-lines"><i></i><i></i><i></i></span>
+      <span class="veil-sticker">
+        <b class="veil-sticker-num">02</b>
+        <span class="veil-sticker-en">MATERIAL</span>
+        <span class="veil-sticker-cn">素材</span>
+      </span>
+    </div>
+    <!-- B：流水线内部（漫画翻页：双面板错位 + 大编号） -->
+    <div class="veil-b">
+      <i class="veil-b-pink"></i>
+      <i class="veil-b-white"></i>
+      <span class="veil-b-num">02</span>
+    </div>
+  </div>
 
   <!-- ================= 主内容区（其它 5 页） ================= -->
   <main class="stage-main" id="main" tabindex="-1">
@@ -280,6 +303,10 @@
               </div>
             </div>
             <div class="material-stats" id="annStats">正在读取…</div>
+            <div class="material-toolbar">
+              <input id="annSearch" class="data-input" type="search" placeholder="按文件名搜索…" aria-label="搜索标注">
+              <span class="material-count" id="annCount"></span>
+            </div>
             <div class="eval-filter" id="annFilter" hidden>
               <button type="button" class="filter-btn active" data-filter="all">全部</button>
               <button type="button" class="filter-btn" data-filter="short">文本过短</button>
@@ -406,12 +433,12 @@
               </button>
             </div>
             <div class="eval-note">
-              固定 11 句测试台词（5 句日文 + 3 句中文 + 3 句英文，与训练集无关），跟参考音频比声纹相似度。约 1.5 分钟，不影响你正常使用。
+              固定 11 句测试台词（5 句日文 + 3 句中文 + 3 句英文，与训练集无关），跟参考音频比声纹相似度。约 1.5 分钟；评测期间合成会暂时不可用。
             </div>
 
             <div id="evalProgress" class="eval-progress hidden">
               <div class="progress-row"><span class="spinner" aria-hidden="true"></span><span id="evalProgressText">正在评测…</span></div>
-              <div class="progress-track"><div id="evalBar" class="progress-bar" style="width:0%"></div></div>
+              <div class="progress-track"><div id="evalBar" class="progress-bar"></div></div>
             </div>
 
             <div id="evalResult" class="eval-result hidden">
@@ -727,6 +754,9 @@
     </button>
   </aside>
 
+  <!-- 抽屉遮罩（≤860px 的 声の設定 / 设置 抽屉共用） -->
+  <div class="drawer-scrim hidden" id="drawerScrim" aria-hidden="true"></div>
+
   <!-- 页脚状态（极简，右下角） -->
   <div class="stage-foot" aria-hidden="true">
     <span>STATIC ／ P5 TRANSITION</span>
@@ -734,6 +764,6 @@
   </div>
 </div>
 
-<script src="app.js?v=20261020v5"></script>
+<script src="app.js?v=20261020v7"></script>
 </body>
 </html>

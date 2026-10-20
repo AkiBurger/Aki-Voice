@@ -42,6 +42,8 @@
     temperature: 0.9,         // 音质微调：越低越稳
     seed: -1,                 // -1 = 每次随机
     inFlight: false,          // 合成请求进行中（防重复点击 / Ctrl+Enter / 换种子重合成）
+    evalRunning: false,       // 评测进行中（期间禁用合成 CTA）
+    synthIdleWait: false,     // 批量停止后等待引擎空闲
   };
 
   // ---------- 元素 ----------
@@ -187,6 +189,12 @@
     backlogCount: $('backlogCount'),
     speakerTone: $('speakerTone'),
     pageVeil: $('pageVeil'),
+    voicePanelBtn: $('voicePanelBtn'),
+    drawerScrim: $('drawerScrim'),
+    historyBtn: $('historyBtn'),
+    annSearch: $('annSearch'),
+    annCount: $('annCount'),
+    evalBar: $('evalBar'),
   };
 
   // ---------- A 式主视觉背景（角色在右、左侧留白；表情 = 背景 120ms 交叉淡入） ----------
@@ -251,14 +259,92 @@
     ui.sceneSrc = src;
   }
 
-  function playPageTransition() {
+  // ---------- 页面切换转场：A 跨区 cut-in / B 流水线翻页 / C 逆向 ----------
+  const TRANS = { timer: 0, leaveTimer: 0 };
+  function motionEnabled() {
+    return !document.body.classList.contains('no-motion') && !prefersReducedMotion();
+  }
+  function viewIndex(v) { return MENU_ORDER.indexOf(v); }
+  function setSticker(meta) {
     if (!els.pageVeil) return;
-    if (document.body.classList.contains('no-motion') || prefersReducedMotion()) return;
-    els.pageVeil.classList.remove('run');
-    void els.pageVeil.offsetWidth;
-    els.pageVeil.classList.add('run');
-    clearTimeout(playPageTransition._timer);
-    playPageTransition._timer = setTimeout(() => els.pageVeil.classList.remove('run'), 340);
+    const num = els.pageVeil.querySelector('.veil-sticker-num');
+    const en = els.pageVeil.querySelector('.veil-sticker-en');
+    const cn = els.pageVeil.querySelector('.veil-sticker-cn');
+    const big = els.pageVeil.querySelector('.veil-b-num');
+    if (num) num.textContent = meta.num;
+    if (en) en.textContent = meta.en;
+    if (cn) cn.textContent = meta.cn;
+    if (big) big.textContent = meta.num;
+  }
+  function pulseNav(name) {
+    const btn = Array.from(navButtons()).find((b) => b.dataset.view === name);
+    if (!btn) return;
+    btn.classList.remove('pulse');
+    void btn.offsetWidth;
+    btn.classList.add('pulse');
+    clearTimeout(pulseNav._t);
+    pulseNav._t = setTimeout(() => btn.classList.remove('pulse'), 240);
+  }
+  function clearTransition() {
+    clearTimeout(TRANS.timer);
+    clearTimeout(TRANS.leaveTimer);
+    if (els.pageVeil) els.pageVeil.classList.remove('run');
+    document.body.classList.remove('is-transitioning');
+    document.querySelectorAll('.view.view-leave').forEach((el) => {
+      el.classList.remove('view-leave', 'dir-fwd', 'dir-back');
+      if (el.id !== 'view-' + state.view) el.classList.add('hidden');
+    });
+    document.querySelectorAll('.view.view-enter').forEach((el) => {
+      el.classList.remove('view-enter', 'enter-a', 'enter-b', 'dir-fwd', 'dir-back', 'fade-only');
+    });
+  }
+  function playViewTransition(prev, next) {
+    const prevEl = document.getElementById('view-' + prev);
+    const nextEl = document.getElementById('view-' + next);
+    if (!nextEl) return;
+    if (!motionEnabled()) {
+      if (prevEl && prevEl !== nextEl) prevEl.classList.add('hidden');
+      nextEl.classList.add('view-enter', 'fade-only');
+      clearTimeout(playViewTransition._fade);
+      playViewTransition._fade = setTimeout(() => nextEl.classList.remove('view-enter', 'fade-only'), 180);
+      return;
+    }
+    const cross = prev === 'synth' || next === 'synth';
+    const type = cross ? 'a' : 'b';
+    const dir = viewIndex(next) > viewIndex(prev) ? 'fwd' : 'back';
+    const meta = MENU_META[next] || MENU_META.synth;
+    clearTransition();
+    // 旧页：1.02 scale + fade，浮在新页上方 220ms
+    if (prevEl && prevEl !== nextEl) {
+      prevEl.classList.remove('hidden');
+      prevEl.classList.add('view-leave', 'dir-' + dir);
+      TRANS.leaveTimer = setTimeout(() => {
+        prevEl.classList.add('hidden');
+        prevEl.classList.remove('view-leave', 'dir-' + dir);
+      }, 230);
+    }
+    // 新页内容入场（A：8px 上滑；B：按方向 12px 横向滑入）
+    nextEl.classList.remove('hidden');
+    nextEl.classList.remove('view-enter', 'enter-a', 'enter-b', 'dir-fwd', 'dir-back', 'fade-only');
+    void nextEl.offsetWidth;
+    nextEl.classList.add('view-enter', type === 'a' ? 'enter-a' : 'enter-b', 'dir-' + dir);
+    // 转场层
+    if (els.pageVeil) {
+      els.pageVeil.dataset.type = type;
+      els.pageVeil.dataset.dir = dir;
+      setSticker(meta);
+      els.pageVeil.classList.remove('run');
+      void els.pageVeil.offsetWidth;
+      els.pageVeil.classList.add('run');
+    }
+    document.body.classList.add('is-transitioning');
+    document.body.dataset.transType = type;
+    document.body.dataset.transDir = dir;
+    TRANS.timer = setTimeout(() => {
+      if (els.pageVeil) els.pageVeil.classList.remove('run');
+      document.body.classList.remove('is-transitioning');
+      nextEl.classList.remove('view-enter', 'enter-a', 'enter-b', 'dir-fwd', 'dir-back');
+    }, 300);
   }
 
   function applyDisplaySettings() {
@@ -274,10 +360,151 @@
     if (els.charToggle) els.charToggle.checked = charOn;
   }
 
+  // ---- 布局变量：对话框位置决定 BACKLOG / 面板高度，避免矮屏互相遮挡 ----
+  function syncLayoutVars() {
+    const dialog = document.querySelector('.dialog');
+    if (!dialog) return;
+    const r = dialog.getBoundingClientRect();
+    const root = document.documentElement;
+    root.style.setProperty('--dialog-top', Math.round(r.top) + 'px');
+    root.style.setProperty('--content-left', Math.round(r.left) + 'px');
+  }
+
+  function drawerMode() {
+    return document.body.classList.contains('compact-ui');
+  }
+
+  // 窄屏 / 矮屏进入紧凑模式：声の設定与设置改顶栏按钮 + 抽屉，历史也有入口
+  function applyCompactUI() {
+    const compact = window.innerWidth <= 860 || (window.innerWidth <= 1400 && window.innerHeight <= 790);
+    document.body.classList.toggle('compact-ui', compact);
+    if (!compact) {
+      document.body.classList.remove('voice-open', 'history-open');
+      if (els.voicePanelBtn) els.voicePanelBtn.setAttribute('aria-expanded', 'false');
+      openSettings(false);
+      syncDrawerScrim();
+    }
+    syncLayoutVars();
+  }
+
+  function syncDrawerScrim() {
+    if (!els.drawerScrim) return;
+    if (!drawerMode()) { els.drawerScrim.classList.add('hidden'); return; }
+    const settingsOpen = els.settingsPanel && !els.settingsPanel.classList.contains('hidden');
+    const show = settingsOpen || document.body.classList.contains('voice-open') || document.body.classList.contains('history-open');
+    els.drawerScrim.classList.toggle('hidden', !show);
+  }
   function openSettings(open) {
     if (!els.settingsPanel || !els.settingsBtn) return;
     els.settingsPanel.classList.toggle('hidden', !open);
     els.settingsBtn.setAttribute('aria-expanded', String(!!open));
+    if (open) {
+      document.body.classList.remove('voice-open', 'history-open');
+      if (els.voicePanelBtn) els.voicePanelBtn.setAttribute('aria-expanded', 'false');
+      if (els.historyBtn) els.historyBtn.setAttribute('aria-expanded', 'false');
+    }
+    syncDrawerScrim();
+  }
+  function toggleVoiceDrawer(open) {
+    if (!els.voicePanel) return;
+    const next = open === undefined ? !document.body.classList.contains('voice-open') : !!open;
+    document.body.classList.toggle('voice-open', next);
+    if (els.voicePanelBtn) els.voicePanelBtn.setAttribute('aria-expanded', String(next));
+    if (next) {
+      els.voicePanel.classList.remove('collapsed');
+      if (els.voicePanelToggle) els.voicePanelToggle.setAttribute('aria-expanded', 'true');
+      openSettings(false);
+      document.body.classList.remove('history-open');
+      toggleBacklog(false);
+    }
+    syncDrawerScrim();
+  }
+  function toggleHistoryDrawer(open) {
+    if (!els.backlogDrawer) return;
+    const next = open === undefined ? !document.body.classList.contains('history-open') : !!open;
+    document.body.classList.toggle('history-open', next);
+    if (els.historyBtn) els.historyBtn.setAttribute('aria-expanded', String(next));
+    if (next) {
+      openSettings(false);
+      document.body.classList.remove('voice-open');
+      if (els.voicePanelBtn) els.voicePanelBtn.setAttribute('aria-expanded', 'false');
+      toggleBacklog(true);
+    } else {
+      toggleBacklog(false);
+    }
+    syncDrawerScrim();
+  }
+  function closeDrawers() {
+    document.body.classList.remove('voice-open', 'history-open');
+    if (els.voicePanelBtn) els.voicePanelBtn.setAttribute('aria-expanded', 'false');
+    if (els.historyBtn) els.historyBtn.setAttribute('aria-expanded', 'false');
+    if (els.settingsPanel) els.settingsPanel.classList.add('hidden');
+    if (els.settingsBtn) els.settingsBtn.setAttribute('aria-expanded', 'false');
+    toggleBacklog(false);
+    syncDrawerScrim();
+  }
+
+  // 轻量玻璃确认/输入框（替代原生 confirm/prompt，保持沉浸）
+  function miniModal(opts) {
+    return new Promise((resolve) => {
+      const scrim = document.createElement('div');
+      scrim.className = 'mini-modal-scrim';
+      const box = document.createElement('div');
+      box.className = 'mini-modal';
+      const title = document.createElement('div');
+      title.className = 'mini-modal-title';
+      title.textContent = opts.title || '确认';
+      const desc = document.createElement('div');
+      desc.className = 'mini-modal-desc';
+      desc.textContent = opts.desc || '';
+      box.append(title, desc);
+      let input = null;
+      if (opts.input) {
+        input = document.createElement('input');
+        input.className = 'mini-modal-input';
+        input.type = 'text';
+        input.value = opts.value || '';
+        input.setAttribute('aria-label', opts.title || '输入');
+        box.appendChild(input);
+      }
+      const actions = document.createElement('div');
+      actions.className = 'mini-modal-actions';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn-secondary btn-sm';
+      cancel.textContent = opts.cancelText || '取消';
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn-primary';
+      ok.style.cssText = 'height:30px;padding:0 14px;font-size:13px;letter-spacing:.06em;clip-path:none;border-radius:9px;';
+      ok.textContent = opts.okText || '确定';
+      actions.append(cancel, ok);
+      box.appendChild(actions);
+      scrim.appendChild(box);
+      document.body.appendChild(scrim);
+      const close = (result) => {
+        document.removeEventListener('keydown', onKey);
+        scrim.remove();
+        resolve(result);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') close(null);
+        else if (e.key === 'Enter' && (!input || document.activeElement === input || document.activeElement === ok)) close(input ? input.value : true);
+      };
+      cancel.addEventListener('click', () => close(null));
+      ok.addEventListener('click', () => close(input ? input.value : true));
+      scrim.addEventListener('click', (e) => { if (e.target === scrim) close(null); });
+      document.addEventListener('keydown', onKey);
+      setTimeout(() => { if (input) { input.focus(); input.select(); } else ok.focus(); }, 20);
+    });
+  }
+  async function askConfirm(title, desc, okText) {
+    const r = await miniModal({ title, desc, okText: okText || '确定' });
+    return !!r;
+  }
+  async function askPrompt(title, desc, value) {
+    const r = await miniModal({ title, desc, value, input: true, okText: '保存' });
+    return r === null ? null : String(r);
   }
 
   function toggleBacklog(open) {
@@ -300,6 +527,16 @@
     synth: '语音合成', train: '训练模型', eval: '评测打分',
     material: '素材', qc: '质检', annotation: '标注',
   };
+  // 菜单顺序（决定转场方向）：01 合成 → 02 素材 → 03 质检 → 04 标注 → 05 训练 → 06 评测
+  const MENU_ORDER = ['synth', 'material', 'qc', 'annotation', 'train', 'eval'];
+  const MENU_META = {
+    synth: { num: '01', en: 'SYNTH', cn: '合成' },
+    material: { num: '02', en: 'MATERIAL', cn: '素材' },
+    qc: { num: '03', en: 'QUALITY', cn: '质检' },
+    annotation: { num: '04', en: 'ANNOTATE', cn: '标注' },
+    train: { num: '05', en: 'TRAIN', cn: '训练' },
+    eval: { num: '06', en: 'EVALUATE', cn: '评测' },
+  };
 
   function navButtons() {
     return document.querySelectorAll('.side-nav-item[data-view], .flow-step[data-view]');
@@ -307,11 +544,22 @@
 
   function switchView(name) {
     if (!VIEW_NAMES.includes(name)) name = 'synth';
+    const prev = state.view;
+    // 同页再点：只做轻微 pulse，不再触发转场/重复渲染
+    if (prev === name) {
+      pulseNav(name);
+      const box0 = document.getElementById('contentScroll');
+      try { if (box0) box0.scrollTop = 0; } catch (e) { /* 忽略 */ }
+      closeDrawers();
+      return;
+    }
     state.view = name;
     hideError();
     VIEW_NAMES.forEach((v) => {
       const el = document.getElementById('view-' + v);
-      if (el) el.classList.toggle('hidden', v !== name);
+      if (!el) return;
+      if (v === name) el.classList.remove('hidden');
+      else el.classList.add('hidden');
     });
     navButtons().forEach((b) => {
       const on = b.dataset.view === name;
@@ -329,10 +577,10 @@
     } catch (e) {
       /* file:// 下可能不支持，忽略 */
     }
-    // 切页数据加载：等 P5 斜切转场（~280ms）扫完再加载，避免 370 行列表渲染卡住动画
+    // 切页数据加载：等转场扫完再加载，避免 370 行列表渲染卡住动画
     // 素材页保留旧列表先显示、稍后再静默刷新，兼顾首屏与转场帧率
     const deferPageLoad = (fn, delay) => {
-      if (document.body.classList.contains('no-motion') || prefersReducedMotion()) { fn(); return; }
+      if (!motionEnabled()) { fn(); return; }
       setTimeout(fn, delay || 300);
     };
     if (name === 'train') {
@@ -344,11 +592,13 @@
       });
     }
     if (name === 'material') {
+      // 旧列表已渲染在 DOM 里（切走只是 hidden），回来不会空白；
+      // 只在还没加载过时拉数据，避免每次切页重渲染 370 行卡住转场
       deferPageLoad(() => {
-        loadMaterials();
+        if (!materialFiles.length) loadMaterials();
         updateDataStatus();
         resumeDataJob();
-      }, 820);
+      }, 450);
     }
     if (name === 'qc') deferPageLoad(loadQcReport);
     if (name === 'annotation') deferPageLoad(loadAnnotations);
@@ -360,20 +610,17 @@
     }
     if (name === 'synth') deferPageLoad(loadRefs);
     try { document.title = title + ' · AkiBurger Voice'; } catch (e) { /* 忽略 */ }
-    // v4 外壳：body[data-view] 控制对话框/浮层显隐；角色默认 idle；P5 斜切转场
+    // 外壳：body[data-view] 控制对话框/浮层显隐；背景表情回 idle；三类分层转场
     document.body.dataset.view = name;
     setCharacter(name === 'synth' && state.inFlight ? 'thinking' : 'idle');
-    const viewEl = document.getElementById('view-' + name);
-    if (viewEl) {
-      viewEl.classList.remove('view-enter');
-      void viewEl.offsetWidth;
-      viewEl.classList.add('view-enter');
-      setTimeout(() => viewEl.classList.remove('view-enter'), 320);
+    if (prev) playViewTransition(prev, name);
+    closeDrawers();
+    if (els.batchPanel && !els.batchPanel.classList.contains('hidden')) {
+      els.batchPanel.classList.add('hidden');
+      document.body.classList.remove('batch-open');
     }
-    playPageTransition();
-    openSettings(false);
+    requestAnimationFrame(syncLayoutVars);
     // 内容区滚动复位（新布局里滚动容器是 #contentScroll，不再是 window）
-    // 直接复位，不做平滑滚动动画（页面切换动效只保留 P5 斜切）
     const scrollBox = document.getElementById('contentScroll');
     try {
       if (scrollBox) scrollBox.scrollTop = 0;
@@ -382,8 +629,29 @@
   }
 
   // ---------- 工具 ----------
+  const FIELD_CN = {
+    epochs_s2: '音色模型轮数', epochs_s1: '韵律模型轮数',
+    batch_s2: '音色批量', batch_s1: '韵律批量',
+    save_every_s2: '音色保存间隔', save_every_s1: '韵律保存间隔',
+    lr_s2: '音色学习率', lr_s1: '韵律学习率',
+    temperature: '稳定度', seed: '随机种子', text: '台词',
+    tone: '语气', lang: '输出语言', input_lang: '输入语言',
+    voice: '音色', ref: '参考音频', path: '文件夹路径', name: '名称',
+  };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
   async function api(path, options) {
-    const res = await fetch(path, options);
+    let res;
+    try {
+      res = await fetch(path, options);
+    } catch (e) {
+      // fetch 本身失败 = 后端服务连不上（AbortError 除外，交给调用方判断）
+      if (e && e.name === 'AbortError') throw e;
+      const err = new Error('连不上后端服务，请确认后端还在运行');
+      err.status = 0;
+      err.network = true;
+      throw err;
+    }
     if (!res.ok) {
       let msg = 'HTTP ' + res.status;
       try {
@@ -392,21 +660,38 @@
           if (typeof body.detail === 'string') {
             msg = body.detail;
           } else if (Array.isArray(body.detail) && body.detail.length) {
-            // FastAPI 422：detail 是数组，取第一条的 msg（比 "HTTP 422" 有用）
+            // FastAPI 422：detail 是数组，取第一条的 msg，字段名映射成中文
             const first = body.detail[0] || {};
             msg = String(first.msg || body.message || msg);
             const field = Array.isArray(first.loc) ? first.loc[first.loc.length - 1] : '';
-            if (field && msg.indexOf(String(field)) < 0) msg = field + '：' + msg;
+            if (field) {
+              const cn = FIELD_CN[field] || field;
+              msg = msg.split(String(field)).join(cn);
+              if (msg.indexOf(cn) < 0) msg = cn + '：' + msg;
+            }
           } else {
             msg = body.message || msg;
           }
         }
       } catch (e) { /* 非 JSON 响应 */ }
+      if (res.status === 429) {
+        // 后端在跑别的合成：给中文提示，调用方可以按 429 退避
+        msg = '引擎正忙（429），请稍等片刻再试';
+      }
       const err = new Error(msg);
       err.status = res.status;   // 调用方可以按状态码给出不同提示
       throw err;
     }
     return res.json();
+  }
+
+  // 合成按钮可用态：引擎在、不在合成/评测中、且台词非空
+  function updateSynthButtonState() {
+    if (!els.synthBtn) return;
+    const hasText = !!(els.textInput && els.textInput.value.trim());
+    const busy = state.inFlight || state.evalRunning || state.synthIdleWait;
+    els.synthBtn.disabled = !state.engineUp || busy || !hasText;
+    els.synthBtn.classList.toggle('needs-text', state.engineUp && !busy && !hasText);
   }
 
   // 下载文件名用的时间戳：voice_20261018_2150.wav
@@ -475,9 +760,10 @@
     els.engineDown.classList.toggle('hidden', up);
     if (!up && kind) renderEngineNotice(kind);
     els.synthBtn.disabled = !up;
+    updateSynthButtonState();
     els.batchToggleBtn.disabled = !up;
     els.previewBtn.disabled = !up;
-    if (els.evalBtn) els.evalBtn.disabled = !up;
+    if (els.evalBtn) els.evalBtn.disabled = !up || state.evalRunning;
   }
 
   // ---------- 启动流程：体检 -> 音色 -> 历史 ----------
@@ -546,9 +832,10 @@
   async function loadHistory() {
     try {
       const resp = await api('/api/history');
-      // 后端返回 {"history": [...]}，兼容纯数组
+      // 后端返回 {"history": [...], "total": N}，兼容纯数组
       const list = Array.isArray(resp) ? resp : (resp && Array.isArray(resp.history) ? resp.history : []);
-      renderHistory(list);
+      const total = Array.isArray(resp) ? list.length : (resp && (resp.total ?? resp.total_count));
+      renderHistory(list, total);
     } catch (e) {
       renderHistory([]);
     }
@@ -645,8 +932,7 @@
       showError('还不能设为参考', '这条记录没有对应的音频文件。');
       return false;
     }
-    let ok = true;
-    try { ok = window.confirm(confirmText || '把这条合成语音设为参考音频？'); } catch (e) { ok = true; }
+    const ok = await askConfirm('设为参考音频？', confirmText || '把这条合成语音设为参考音频？保存后可在「声の設定 → 参考音频」里指定，也可以随预设一起保存。', '设为参考');
     if (!ok) return false;
     try {
       const res = await api('/api/ref/from-history', {
@@ -703,12 +989,17 @@
     els.charCount.textContent = chars + ' 字';
     const sec = Math.max(1, Math.round(chars / 5)); // 每秒约 5 字粗估
     els.durationEst.textContent = '预计约 ' + sec + ' 秒';
+    updateSynthButtonState();
   }
 
   // ---------- 语气 ----------
   function setTone(tone) {
     state.tone = tone;
-    els.toneBtns.forEach((b) => b.classList.toggle('active', b.dataset.tone === tone));
+    els.toneBtns.forEach((b) => {
+      const on = b.dataset.tone === tone;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-checked', String(on));
+    });
     if (els.speakerTone) els.speakerTone.textContent = tone === 'auto' ? '自动' : tone;
     // 手选后，自动判断横幅只作参考展示，不再强制同步
     // 兼容中文语气值：按钮上是中文名，后端 tone 传中文；'auto' 是自动判断的哨兵值
@@ -785,6 +1076,7 @@
     els.synthBtn.disabled = true;
     els.synthBtn.querySelector('.btn-label').textContent = '合成中…';
     els.synthProgress.classList.remove('hidden');
+    syncLayoutVars();
     const translating = state.inputLang !== state.lang;
     els.progressText.textContent = translating
       ? '正在翻译并合成…'
@@ -813,10 +1105,10 @@
         }
       }
 
-      // 随机模式下，把这次实际用的种子显示出来，方便复现
+      // 随机模式下，把这次实际用的种子回显并同步 state（显示值 = 下次实际用值）
       const seedUsed = res.seed_used !== undefined ? res.seed_used : res.seed;
-      if (els.seedInput && seedUsed !== undefined && seedUsed !== -1) {
-        els.seedInput.value = seedUsed;
+      if (seedUsed !== undefined && seedUsed !== -1) {
+        setSeed(seedUsed);
       }
 
       state.currentAudioUrl = res.audio_url;
@@ -855,9 +1147,10 @@
       showError('合成失败', String(e.message || e));
     } finally {
       state.inFlight = false;
-      els.synthBtn.disabled = !state.engineUp;
       els.synthBtn.querySelector('.btn-label').textContent = '合成';
       els.synthProgress.classList.add('hidden');
+      updateSynthButtonState();
+      syncLayoutVars();
     }
   }
 
@@ -1076,7 +1369,8 @@
   }
 
   async function deleteMaterial(name) {
-    if (!window.confirm('删除这段素材？会移到回收站，可以点「↩ 恢复删除」找回。')) return;
+    const ok = await askConfirm('删除这段素材？', '素材会移到回收站，可以点「恢复删除」找回。', '删除');
+    if (!ok) return;
     try {
       await api('/api/material/delete', {
         method: 'POST',
@@ -1091,7 +1385,8 @@
   }
 
   async function clearMaterials() {
-    if (!window.confirm('清空所有已导入素材？\n素材会移到回收站（不是真删），之后可以点「↩ 恢复删除」找回。')) return;
+    const ok = await askConfirm('清空所有已导入素材？', '素材会移到回收站（不是真删），之后可以点「恢复删除」找回。', '全部清空');
+    if (!ok) return;
     try {
       await api('/api/material/delete', {
         method: 'POST',
@@ -1230,10 +1525,13 @@
     let entries = annLastData.entries || [];
     if (filter === 'short') entries = entries.filter((e) => e.text_len > 0 && e.text_len < 4);
     if (filter === 'long') entries = entries.filter((e) => e.text_len > 60);
+    const query = ((els.annSearch && els.annSearch.value) || '').trim().toLowerCase();
+    if (query) entries = entries.filter((e) => String(e.name || '').toLowerCase().includes(query));
+    if (els.annCount) els.annCount.textContent = query ? `匹配 ${entries.length} / 共 ${(annLastData.entries || []).length} 条` : '';
     if (!entries.length) {
       const empty = document.createElement('div');
       empty.className = 'eval-detail-empty';
-      empty.textContent = '没有符合条件的条目。';
+      empty.textContent = query ? '没有匹配的文件名' : '没有符合条件的条目。';
       els.annList.appendChild(empty);
       return;
     }
@@ -1264,9 +1562,12 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ wav: e.wav, text: input.value }),
           });
+          // 只更新这一行 + 明确 toast，不整表重绘（避免列表闪一下、toast 被冲掉）
+          e.text = input.value;
+          e.text_len = [...input.value].length;
           save.textContent = '已保存';
+          showToast('已保存：' + e.name, 2800);
           setTimeout(() => { save.textContent = '保存'; save.disabled = false; }, 1200);
-          loadAnnotations();
         } catch (err) {
           showError('保存失败', String(err.message || err));
           save.disabled = false;
@@ -1332,23 +1633,25 @@
     if (!silent) showToast('标注列表已清空');
   }
 
-  function showToast(msg) {
+  function showToast(msg, ms) {
     let el = document.getElementById('toast');
     if (!el) {
       el = document.createElement('div');
       el.id = 'toast';
       el.className = 'toast';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
       document.body.appendChild(el);
     }
     el.textContent = msg;
     el.classList.add('show');
     clearTimeout(showToast._t);
-    showToast._t = setTimeout(() => el.classList.remove('show'), 1800);
+    showToast._t = setTimeout(() => el.classList.remove('show'), ms || 2400);
   }
 
   async function browseFolder() {
     if (!els.browseBtn) return;
-    const old = els.browseBtn.textContent;
+    const oldHtml = els.browseBtn.innerHTML;
     els.browseBtn.disabled = true;
     els.browseBtn.textContent = '等待选择…';
     if (els.browseHint) els.browseHint.textContent = '已打开文件夹选择窗口，请在弹出的窗口里选好文件夹。';
@@ -1363,10 +1666,10 @@
           res && res.busy ? '已经有一个选择框开着，先选完那个。' : '没有选择文件夹。';
       }
     } catch (e) {
-      if (els.browseHint) els.browseHint.textContent = '打开选择框失败：' + (e.message || e);
+      if (els.browseHint) els.browseHint.textContent = '打开选择框失败：' + friendlyError(e.message || e);
     } finally {
       els.browseBtn.disabled = false;
-      els.browseBtn.textContent = old;
+      els.browseBtn.innerHTML = oldHtml;  // 保留图标，不要被 textContent 吃掉
     }
   }
 
@@ -1617,20 +1920,41 @@
   const LANG_LABEL = { ja: '日文', zh: '中文', en: '英文' };
 
   async function runEvaluation() {
-    if (!els.evalBtn) return;
+    if (!els.evalBtn || state.evalRunning) return;
+    state.evalRunning = true;
+    const btnHtml = els.evalBtn.innerHTML;
     els.evalBtn.disabled = true;
     els.evalBtn.textContent = '评测中…';
     els.evalProgress.classList.remove('hidden');
+    if (els.evalBar) els.evalBar.style.width = '0%';
     setCharacter('thinking');
     if (els.evalResult) els.evalResult.classList.add('hidden');
-    els.evalProgressText.textContent = '正在合成测试句并打分，约 1.5 分钟…';
+    els.evalProgressText.textContent = '正在准备评测…';
+    // 评测期间合成 CTA 禁用并说明原因
+    if (els.synthBtn) {
+      const lab = els.synthBtn.querySelector('.btn-label');
+      if (lab) lab.textContent = '评测中…';
+      els.synthBtn.disabled = true;
+    }
+    const startedAt = Date.now();
     const progressTimer = setInterval(async () => {
       try {
         const st = await api('/api/eval/status');
-        const msg = st && (st.message || st.stage);
-        if (msg) els.evalProgressText.textContent = msg;
-      } catch (e) { /* 状态拿不到就算了 */ }
-    }, 1500);
+        const p = (st && st.progress) || {};
+        if (p && p.total > 0) {
+          const cur = Math.min(p.total, p.current || 0);
+          const pct = p.percent != null ? Math.round(p.percent) : Math.round((cur / p.total) * 100);
+          els.evalProgressText.textContent = `第 ${cur}/${p.total} 句 · ${pct}%`;
+          if (els.evalBar) els.evalBar.style.width = pct + '%';
+        } else if (st && st.stage) {
+          els.evalProgressText.textContent = st.stage;
+        }
+      } catch (e) { /* 状态拿不到就退回时间提示 */ }
+      if (!/^第 /.test(els.evalProgressText.textContent || '')) {
+        const sec = Math.round((Date.now() - startedAt) / 1000);
+        els.evalProgressText.textContent = `正在评测…已用 ${sec} 秒（约 1.5 分钟）`;
+      }
+    }, 1200);
     try {
       const res = await api('/api/evaluate', { method: 'POST' });
       if (!res || !res.ok || !res.result) throw new Error('评测没有返回结果');
@@ -1643,8 +1967,14 @@
     } finally {
       clearInterval(progressTimer);
       els.evalProgress.classList.add('hidden');
-      els.evalBtn.textContent = '开始评测';
+      els.evalBtn.innerHTML = btnHtml;
       els.evalBtn.disabled = !state.engineUp;
+      state.evalRunning = false;
+      if (els.synthBtn) {
+        const lab = els.synthBtn.querySelector('.btn-label');
+        if (lab) lab.textContent = '合成';
+        updateSynthButtonState();
+      }
     }
   }
 
@@ -1970,32 +2300,31 @@
 
   function saveCurrentPreset() {
     const list = getPresets();
-    let name = '';
-    try {
-      const input = window.prompt('给这个预设起个名字（留空用时间命名）：', '预设 ' + (list.length + 1));
+    const defName = '预设 ' + (list.length + 1);
+    askPrompt('保存当前设置为预设', '给这个预设起个名字（留空用时间命名）', defName).then((input) => {
       if (input === null) return;   // 取消
-      name = (input || '').trim();
-    } catch (e) { name = ''; }
-    if (!name) name = '预设 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    const preset = {
-      name,
-      voice: els.voiceSelect.value || '',
-      ref: currentRef(),
-      lang: state.lang,
-      inputLang: state.inputLang,
-      tone: state.tone,
-      temperature: state.temperature,
-      seed: state.seed,
-      savedAt: new Date().toISOString(),
-    };
-    list.push(preset);
-    if (!savePresets(list)) {
-      // localStorage 不可用时不能静默失败，否则用户以为存上了
-      showError('预设保存失败', '浏览器本地存储不可用（可能是隐私模式或空间满了），这次预设没存上。');
-      return;
-    }
-    renderPresets();
-    showToast('预设已保存');
+      let name = (input || '').trim();
+      if (!name) name = '预设 ' + new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const preset = {
+        name,
+        voice: els.voiceSelect.value || '',
+        ref: currentRef(),
+        lang: state.lang,
+        inputLang: state.inputLang,
+        tone: state.tone,
+        temperature: state.temperature,
+        seed: state.seed,
+        savedAt: new Date().toISOString(),
+      };
+      list.push(preset);
+      if (!savePresets(list)) {
+        // localStorage 不可用时不能静默失败，否则用户以为存上了
+        showError('预设保存失败', '浏览器本地存储不可用（可能是隐私模式或空间满了），这次预设没存上。');
+        return;
+      }
+      renderPresets();
+      showToast('预设已保存', 2600);
+    });
   }
 
   // ---------- 试听所选音色 ----------
@@ -2033,7 +2362,63 @@
   // ---------- 批量合成 ----------
   const ALLOWED_TONES = ['auto', '平静', '开心', '悲伤', '生气', '惊讶', '害怕'];
   let batchRunning = false;
+  let batchStopped = false;
   let batchAbort = null;
+
+  // 后端合成状态（task-24 提供 /api/synth/status；暂时 404 时用保守等待兜底）
+  async function waitSynthIdle(timeoutMs) {
+    const limit = timeoutMs || 120000;
+    const t0 = Date.now();
+    let probed = false;
+    let apiMissing = false;
+    while (Date.now() - t0 < limit) {
+      let st = null;
+      if (!apiMissing && !probed) {
+        probed = true;
+        try {
+          st = await api('/api/synth/status');
+        } catch (e) {
+          // 后端还没上线该接口（404）：只探一次，避免刷一屏 404，改走保守等待
+          if (e && (e.status === 404 || e.status === 0)) apiMissing = true;
+        }
+      } else if (!apiMissing) {
+        try { st = await api('/api/synth/status'); } catch (e) { st = null; }
+      }
+      if (st) {
+        const busy = st.busy === true || st.running === true || st.in_flight === true ||
+          (st.current && (st.current.running === true || st.current.busy === true));
+        if (!busy) return true;
+      } else if (apiMissing && Date.now() - t0 >= 6000) {
+        // 后端还没有 /api/synth/status：保守等 6s（覆盖单句合成耗时），再靠 429 退避兜底
+        return true;
+      }
+      await sleep(500);
+    }
+    return false;
+  }
+
+  // 批量单句请求：429 时按 800ms / 1600ms 退避重试，最多 2 次
+  async function synthOneWithRetry(payload, signal) {
+    let lastErr = null;
+    for (let attempt = 0; attempt <= 2; attempt++) {
+      try {
+        return await api('/api/synthesize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal,
+          body: JSON.stringify(payload),
+        });
+      } catch (e) {
+        lastErr = e;
+        if (e && e.status === 429 && attempt < 2 && batchRunning) {
+          await sleep(800 * (attempt + 1));
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw lastErr || new Error('合成失败');
+  }
 
   function parseBatchLines() {
     const lines = els.batchInput.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -2086,10 +2471,13 @@
 
     hideError();
     batchRunning = true;
+    batchStopped = false;
     els.batchStartBtn.disabled = true;
     els.batchStopBtn.classList.remove('hidden');
+    els.batchStopBtn.disabled = false;
     els.batchResults.classList.remove('hidden');
     els.batchResults.innerHTML = '';
+    if (els.synthBtn) els.synthBtn.disabled = true;
 
     for (let i = 0; i < items.length; i++) {
       if (!batchRunning) break;
@@ -2099,14 +2487,12 @@
       status.textContent = '合成中…';
       batchAbort = new AbortController();
       try {
-        const res = await api('/api/synthesize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: batchAbort.signal,
-          body: JSON.stringify({ text: item.text, lang: state.lang, input_lang: state.inputLang, voice, tone: item.tone, seed: state.seed, temperature: state.temperature, ref: currentRef() }),
-        });
+        const res = await synthOneWithRetry({
+          text: item.text, lang: state.lang, input_lang: state.inputLang, voice,
+          tone: item.tone, seed: state.seed, temperature: state.temperature, ref: currentRef(),
+        }, batchAbort.signal);
         if (res && res.ok && res.audio_url) {
-          setIcon(status, 'check');
+          status.innerHTML = iconHtml('check') + ' 完成';
           status.className = 'batch-status done';
           const audio = document.createElement('audio');
           audio.controls = true;
@@ -2123,7 +2509,7 @@
           status.textContent = '已停止';
           status.className = 'batch-status';
         } else {
-          status.innerHTML = iconHtml('alert-triangle') + ' 失败：' + String(e.message || e).slice(0, 60);
+          status.innerHTML = iconHtml('alert-triangle') + ' 失败：' + friendlyError(String(e.message || e)).slice(0, 70);
           status.className = 'batch-status fail';
         }
       }
@@ -2131,18 +2517,38 @@
 
     batchRunning = false;
     batchAbort = null;
-    els.batchStartBtn.disabled = !state.engineUp;
     els.batchStopBtn.classList.add('hidden');
+    if (batchStopped) {
+      // 停止只是中止前端请求，服务端可能还在跑：等它空闲再允许重开
+      els.batchStartBtn.disabled = true;
+      els.batchStartBtn.textContent = '等待引擎空闲…';
+      state.synthIdleWait = true;
+      updateSynthButtonState();
+      await waitSynthIdle();
+      state.synthIdleWait = false;
+    }
+    els.batchStartBtn.textContent = '开始逐句合成';
+    els.batchStartBtn.disabled = !state.engineUp;
+    updateSynthButtonState();
     loadHistory();
   }
 
   // ---------- 历史 ----------
-  function renderHistory(list) {
+  function syncHistoryCounts() {
+    if (!els.historyList) return;
+    const n = els.historyList.querySelectorAll('.history-item').length;
+    if (els.historyEmpty) els.historyEmpty.hidden = n > 0;
+    if (els.clearHistoryBtn) els.clearHistoryBtn.hidden = n === 0;
+    if (els.backlogCount) els.backlogCount.textContent = String(n);
+  }
+
+  function renderHistory(list, total) {
+    const totalN = Number.isFinite(Number(total)) ? Number(total) : list.length;
     els.historyEmpty.hidden = list.length > 0;
     els.historyList.querySelectorAll('.history-item').forEach((n) => n.remove());
     // 「清空历史」按钮：有记录时才显示
-    if (els.clearHistoryBtn) els.clearHistoryBtn.hidden = list.length === 0;
-    if (els.backlogCount) els.backlogCount.textContent = String(list.length);
+    if (els.clearHistoryBtn) els.clearHistoryBtn.hidden = totalN === 0;
+    if (els.backlogCount) els.backlogCount.textContent = String(totalN);
     for (const item of list) {
       els.historyList.appendChild(buildHistoryItem(item));
     }
@@ -2208,7 +2614,7 @@
     del.title = '删除这条记录';
     del.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const ok = window.confirm('删除这条记录？音频文件也会一起删掉。');
+      const ok = await askConfirm('删除这条记录？', '音频文件也会一起删掉，无法恢复。', '删除');
       if (!ok) return;
       del.disabled = true;
       try {
@@ -2227,6 +2633,7 @@
         } catch (e) { /* 历史拿不到就保持原状 */ }
         if (!els.historyList.querySelector('.history-item')) els.historyEmpty.hidden = false;
         if (els.clearHistoryBtn && !els.historyList.querySelector('.history-item')) els.clearHistoryBtn.hidden = true;
+        syncHistoryCounts();
       } catch (err) {
         del.disabled = false;
         showError('删除失败', String(err.message || err));
@@ -2275,10 +2682,25 @@
   }
 
   // ---------- 错误提示 ----------
+  function friendlyError(desc) {
+    let d = String(desc == null ? '' : desc);
+    if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(d)) d = '连不上后端服务，请确认后端还在运行';
+    if (/429/.test(d) && !/引擎正忙/.test(d)) d = '引擎正忙（429），请稍等片刻再试';
+    // 422 英文字段/句子兜底：常见字段直译
+    d = d.replace(/epochs_s2/g, '音色模型轮数').replace(/epochs_s1/g, '韵律模型轮数')
+      .replace(/batch_s2/g, '音色批量').replace(/batch_s1/g, '韵律批量')
+      .replace(/save_every_s2/g, '音色保存间隔').replace(/save_every_s1/g, '韵律保存间隔')
+      .replace(/lr_s2/g, '音色学习率').replace(/lr_s1/g, '韵律学习率')
+      .replace(/String should match pattern.*$/i, '路径格式不对')
+      .replace(/Field required/gi, '必填项缺了');
+    return d;
+  }
+
   function showError(title, desc) {
+    const text = friendlyError(desc);
     els.errorBox.classList.remove('hidden');
     els.errorTitle.textContent = title;
-    els.errorDesc.textContent = desc;
+    els.errorDesc.textContent = text;
     setCharacter('sad');
     // 合成页：错误面板在对话框上方，聚焦+滚到可见，并额外 toast，避免"点了没反应"
     if (state.view === 'synth') {
@@ -2287,8 +2709,8 @@
         els.errorBox.focus({ preventScroll: true });
       } catch (e) { /* 忽略 */ }
     }
-    // 错误框在合成页里，别的页面出错也要弹提示，否则用户看不到
-    showToast(title + '：' + desc);
+    // 错误框在合成页里，别的页面出错也要弹提示（非合成页给足 5 秒阅读时间）
+    showToast(title + '：' + text, state.view === 'synth' ? 2600 : 5000);
   }
   function hideError() {
     els.errorBox.classList.add('hidden');
@@ -2300,8 +2722,8 @@
   updateLangNote();
 
   els.toneBtns.forEach((b) => b.addEventListener('click', () => {
+    // 语气只更新选中态与 speakerTone；surprised 只留给切模型/参考
     setTone(b.dataset.tone);
-    setCharacter('surprised');
   }));
 
   els.textInput.addEventListener('input', () => {
@@ -2354,9 +2776,41 @@
       openSettings(false);
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') openSettings(false);
+      if (e.key === 'Escape') closeDrawers();
     });
   }
+  if (els.voicePanelBtn) {
+    els.voicePanelBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleVoiceDrawer();
+    });
+  }
+  if (els.historyBtn) {
+    els.historyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleHistoryDrawer();
+    });
+  }
+  if (els.drawerScrim) {
+    els.drawerScrim.addEventListener('click', closeDrawers);
+  }
+  const skipLink = document.querySelector('.skip-link');
+  if (skipLink) {
+    skipLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const box = document.getElementById('contentScroll');
+      if (box) {
+        box.setAttribute('tabindex', '-1');
+        box.focus({ preventScroll: true });
+        box.scrollTop = 0;
+      }
+    });
+  }
+  window.addEventListener('resize', () => {
+    applyCompactUI();
+    syncDrawerScrim();
+    syncLayoutVars();
+  });
   if (els.motionToggle) {
     els.motionToggle.addEventListener('change', () => {
       try { localStorage.setItem('abv:motion', els.motionToggle.checked ? '1' : '0'); } catch (e) { /* 忽略 */ }
@@ -2397,6 +2851,9 @@
   }
   // 标注页
   if (els.annRefreshBtn) els.annRefreshBtn.addEventListener('click', loadAnnotations);
+  if (els.annSearch) {
+    els.annSearch.addEventListener('input', () => renderAnnotations(state.annFilter || 'all'));
+  }
   if (els.annFilter) {
     els.annFilter.querySelectorAll('.filter-btn').forEach((b) => {
       b.addEventListener('click', () => { state.annFilter = b.dataset.filter; renderAnnotations(state.annFilter); });
@@ -2444,7 +2901,9 @@
     setTemperature(els.tempRange.value);   // 初始化 state.temperature
   }
   if (els.seedInput) {
+    // input 也同步，避免用户改完直接点合成（change 还没触发）
     els.seedInput.addEventListener('change', () => setSeed(els.seedInput.value));
+    els.seedInput.addEventListener('input', () => setSeed(els.seedInput.value));
   }
   if (els.rerollBtn) {
     els.rerollBtn.addEventListener('click', () => {
@@ -2490,7 +2949,7 @@
   // 清空全部历史
   if (els.clearHistoryBtn) {
     els.clearHistoryBtn.addEventListener('click', async () => {
-      const ok = window.confirm('清空全部历史记录？所有合成音频都会被删除，无法恢复。');
+      const ok = await askConfirm('清空全部历史记录？', '所有合成音频都会被删除，无法恢复。', '全部清空');
       if (!ok) return;
       els.clearHistoryBtn.disabled = true;
       try {
@@ -2506,18 +2965,26 @@
   }
 
   els.batchToggleBtn.addEventListener('click', () => {
-    els.batchPanel.classList.toggle('hidden');
-    if (!els.batchPanel.classList.contains('hidden')) {
+    const open = els.batchPanel.classList.toggle('hidden');
+    document.body.classList.toggle('batch-open', !open);
+    if (!open) {
       updateBatchCount();
       els.batchInput.focus();
+      syncLayoutVars();
     }
   });
 
   els.batchInput.addEventListener('input', updateBatchCount);
   els.batchStartBtn.addEventListener('click', startBatch);
   els.batchStopBtn.addEventListener('click', () => {
+    if (!batchRunning) return;
+    batchStopped = true;
     batchRunning = false;
     if (batchAbort) batchAbort.abort();
+    els.batchStartBtn.disabled = true;
+    els.batchStartBtn.textContent = '等待引擎空闲…';
+    els.batchStopBtn.disabled = true;
+    showToast('已停止，等待引擎空闲后可重新开始…', 3000);
   });
 
   els.voiceSelect.addEventListener('change', () => {
@@ -2571,10 +3038,10 @@
     }
   });
 
-  // 浏览器前进/后退切页
+  // 浏览器前进/后退切页（#main / #contentScroll 是 skip link，不算页面）
   window.addEventListener('hashchange', () => {
     const name = location.hash.replace('#', '');
-    if (name && name !== state.view) switchView(name);
+    if (VIEW_NAMES.includes(name) && name !== state.view) switchView(name);
   });
 
   // 引擎断线轮询（每 12 秒查一次，回来了自动恢复）
@@ -2598,18 +3065,27 @@
   }, 12000);
 
   // ---------- 启动 ----------
+  applyCompactUI();
   updateMeta();
   renderPresets();
   applyDisplaySettings();
   initScenes();
   preloadScenes();
-  if (els.speakerTone) els.speakerTone.textContent = state.tone === 'auto' ? '自动' : state.tone;
+  setTone('auto');
+  // 对话框高度变化时同步布局变量（进度条/批量/预设面板都依赖它）
+  const dialogEl = document.querySelector('.dialog');
+  if (dialogEl && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => syncLayoutVars()).observe(dialogEl);
+  }
+  syncLayoutVars();
+  updateSynthButtonState();
   // 顶部标签切换
   document.querySelectorAll('.side-nav-item[data-view], .flow-step[data-view]').forEach((b) => {
     b.addEventListener('click', () => switchView(b.dataset.view));
   });
   // 直接带 #train / #eval 打开也能定位
-  switchView((location.hash || '#synth').slice(1));
+  const initialView = (location.hash || '#synth').slice(1);
+  switchView(VIEW_NAMES.includes(initialView) ? initialView : 'synth');
 
   boot();
 })();
